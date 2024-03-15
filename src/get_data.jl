@@ -26,7 +26,7 @@ function download_data(outdir::String=datadir())
 end
 
 """
-    process_data(data_dir::String)
+    process_data()
 
 # Output
 + Each column is a sample
@@ -53,7 +53,7 @@ function process_data(data_dir::String=datadir())
 end
 
 """
-    process_root_cause_truth(data_dir::String)
+    process_root_cause_truth(genecounts::DataFrame)
 
 Assumes "gene_name_mapping_v29.tsv" and "13073_2022_1019_MOESM1_ESM.csv" 
 exist in `data_dir`
