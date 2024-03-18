@@ -8,6 +8,7 @@ using Statistics
 using GLMNet
 using CovarianceEstimation
 using LinearAlgebra
+using Random
 
 export download_data, 
     process_data,
