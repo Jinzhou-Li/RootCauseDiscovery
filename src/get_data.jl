@@ -153,7 +153,7 @@ function QC_gene_expression_data(;
     )
     # raw data
     genecounts = process_data()
-    root_cause_df = process_root_cause_truth(genecounts)
+    root_cause_ground_truth = process_root_cause_truth(genecounts)
 
     # first column is gene ID
     count_data = @view(genecounts[:, 2:end])
@@ -171,7 +171,7 @@ function QC_gene_expression_data(;
 
     # Make sure the truth root cause gene is preserved
     pass_qc_genes = unique(genecounts_filtered[!, 1]) |> Vector{String}
-    root_cause_genes = unique(root_cause_df[!, "gene_id"]) |> Vector{String}
+    root_cause_genes = unique(root_cause_ground_truth[!, "gene_id"]) |> Vector{String}
     length(root_cause_genes) == length(intersect(root_cause_genes, pass_qc_genes)) ||
         error("At least one true root cause gene is removed after QC, aborting")
 
@@ -190,24 +190,24 @@ function QC_gene_expression_data(;
     end
 
     # update the truth root cause mapping file
-    root_cause_df_new = deepcopy(root_cause_df)
+    root_cause_ground_truth_new = deepcopy(root_cause_ground_truth)
     full_geneID = genecounts_filtered[!, "geneID"]
-    for i in 1:size(root_cause_df, 1)
-        gene = root_cause_df[i, "gene_id"]
+    for i in 1:size(root_cause_ground_truth, 1)
+        gene = root_cause_ground_truth[i, "gene_id"]
         new_idx = findfirst(x -> x == gene, full_geneID)
-        root_cause_df_new[i, "root cause row index in genecounts"] = new_idx
+        root_cause_ground_truth_new[i, "root cause row index in genecounts"] = new_idx
     end
 
     # finally, we create 2 subsets:
     #   1. One includes only the 32 columns (samples) for which root cause gene is known
     #   2. The other includes all other columns (observational data)
-    known_patient_id = root_cause_df_new[!, "Patient ID"]
+    known_patient_id = root_cause_ground_truth_new[!, "Patient ID"]
     subset1_idx = indexin(known_patient_id, names(genecounts_normalized))
     subset2_idx = setdiff(1:size(genecounts_normalized, 2), subset1_idx)
-    genecounts_normalized_ground_truth = genecounts_normalized[:, vcat(1, subset1_idx)]
+    genecounts_normalized_int = genecounts_normalized[:, vcat(1, subset1_idx)]
     genecounts_normalized_obs = genecounts_normalized[:, subset2_idx]
 
-    return genecounts_normalized_ground_truth, 
+    return genecounts_normalized_int, 
         genecounts_normalized_obs, 
-        root_cause_df_new
+        root_cause_ground_truth_new
 end
