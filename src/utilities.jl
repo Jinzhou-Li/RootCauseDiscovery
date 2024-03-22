@@ -25,7 +25,7 @@ function zscore(obs_data::AbstractMatrix{T}, intv_data::AbstractMatrix{T}) where
 end
 
 """
-    compute_permutations(z::Vector{T}; threshold=2)
+    compute_permutations(z::Vector{T}; threshold=2, nshuffles=1)
 
 Given z-score vector, returns a list of permutations that will be used for 
 the Cholesky method. 
@@ -34,9 +34,15 @@ the Cholesky method.
 + `z`: Z-score vector
 
 # Optional inputs
-+ `threshold`: threshold is used for finding the abberent set
++ `threshold`: z-score threshold used for finding the abberent set (smaller
+    means more permutations)
++ `nshuffles`: how many permutations to try for each "middle guy"
 """
-function compute_permutations(z::AbstractVector{T}; threshold=2) where T
+function compute_permutations(
+        z::AbstractVector{T}; 
+        threshold=2,
+        nshuffles=1
+    ) where T
     # subset of genes indices that are abberent
     idx1 = findall(x -> x > threshold, z)
     idx1_copy = copy(idx1)
@@ -47,12 +53,14 @@ function compute_permutations(z::AbstractVector{T}; threshold=2) where T
     # one way of generating length(idx1) permutations, fixing idx2
     perms = Vector{Int}[]
     for i in eachindex(idx1)
-        shuffle!(idx2)
-        shuffle!(idx1)
-        target = idx1_copy[i]
-        index = findfirst(x -> x == target, idx1)
-        idx1[1], idx1[index] = target, idx1[1]
-        push!(perms, vcat(idx2, idx1))
+        for _ in 1:nshuffles
+            shuffle!(idx2)
+            shuffle!(idx1)
+            target = idx1_copy[i]
+            index = findfirst(x -> x == target, idx1)
+            idx1[1], idx1[index] = target, idx1[1]
+            push!(perms, vcat(idx2, idx1))
+        end
     end
     return perms
 end
@@ -114,7 +122,8 @@ function root_cause_discovery_one_subject_all_perm(
         transform_obs::DataFrame,  # col 1 is gene name, every other cols are different samples
         transform_int::DataFrame,  # this MUST be a 2 column dataframe, col1 = gene name, col2 = gene counts for a patient
         threshold::Float64;
-        verbose::Bool=true
+        verbose::Bool=true,
+        nshuffles::Int=1
         )
     # check for errors
     ngenes = size(transform_obs, 1)
@@ -128,7 +137,7 @@ function root_cause_discovery_one_subject_all_perm(
     z = zscore(Xobs, Xint) |> vec
     
     # compute permutations to try
-    permutations = compute_permutations(z, threshold=threshold)
+    permutations = compute_permutations(z, threshold=threshold, nshuffles=nshuffles)
     println("Trying $(length(permutations)) permutations")
 
     # try all permutations
@@ -214,7 +223,8 @@ Todo: combine with `root_cause_discovery_one_subject_all_perm`
 """
 function root_cause_discovery_reduced_dimensional(
         Xobs_new::AbstractMatrix{Float64}, 
-        Xint_sample_new::AbstractVector{Float64},
+        Xint_sample_new::AbstractVector{Float64};
+        nshuffles::Int = 1,
     )
     # first compute z score (needed to compute permutations)
     z = zscore(Xobs_new, Xint_sample_new') |> vec
@@ -223,7 +233,7 @@ function root_cause_discovery_reduced_dimensional(
     largest, largest_idx = Float64[], Int[]
     second_largest = Float64[]
     @showprogress for threshold in 0.1:0.2:5
-        permutations = compute_permutations(z; threshold=threshold)
+        permutations = compute_permutations(z; threshold=threshold, nshuffles=nshuffles)
         X̃all = Vector{Float64}[]
         for perm in permutations
             push!(X̃all, root_cause_discovery(Xobs_new, Xint_sample_new, perm; verbose=true))

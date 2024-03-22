@@ -16,7 +16,8 @@ export download_data,
     QC_gene_expression_data,
     root_cause_discovery_high_dimensional,
     root_cause_discovery_reduced_dimensional,
-    reduce_genes
+    reduce_genes,
+    zscore
 
 include("get_data.jl")
 include("utilities.jl")
