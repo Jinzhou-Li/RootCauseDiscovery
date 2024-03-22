@@ -267,7 +267,8 @@ function root_cause_discovery_high_dimensional(
         Xint::AbstractMatrix{Float64},
         ground_truth::DataFrame, # this is only used to access sample ID in Xint
         method::String; # either "cv" or "largest_support"
-        y_idx_z_threshold=1.5
+        y_idx_z_threshold=1.5,
+        nshuffles::Int = 1,
     )
     # compute some guesses for root cause index
     i = findfirst(x -> x == patient_id, ground_truth[!, "Patient ID"])
@@ -284,7 +285,8 @@ function root_cause_discovery_high_dimensional(
         )
 
         # compute current guess of root cause index
-        result = root_cause_discovery_reduced_dimensional(Xobs_new, Xint_sample_new)
+        result = root_cause_discovery_reduced_dimensional(Xobs_new, 
+            Xint_sample_new, nshuffles=nshuffles)
 
         push!(results, result)
     end
