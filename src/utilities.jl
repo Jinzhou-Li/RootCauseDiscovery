@@ -234,9 +234,12 @@ function root_cause_discovery_reduced_dimensional(
     second_largest = Float64[]
     @showprogress for threshold in 0.1:0.2:5
         permutations = compute_permutations(z; threshold=threshold, nshuffles=nshuffles)
-        X̃all = Vector{Float64}[]
-        for perm in permutations
-            push!(X̃all, root_cause_discovery(Xobs_new, Xint_sample_new, perm; verbose=true))
+        X̃all = Vector{Vector{Float64}}(undef, length(permutations))
+        Threads.@threads for i in eachindex(permutations)
+            perm = permutations[i]
+            X̃all[i] = root_cause_discovery(
+                Xobs_new, Xint_sample_new, perm; verbose=false
+            )
         end
         largest_cur, largest_idx_cur = find_largest(X̃all)
         append!(largest, largest_cur)
