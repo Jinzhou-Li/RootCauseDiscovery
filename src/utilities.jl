@@ -1,9 +1,13 @@
 """
     zscore(obs_data::AbstractMatrix{T}, intv_data::AbstractMatrix{T})
+    zscore(obs_data::AbstractMatrix{T}, intv_data::AbstractVector{T})
 
-Runs the Z-score method. Input 1 is n*p, input 2 is m*p
+Runs the Z-score method. Input 1 is n*p, input 2 is m*p (or p*1)
 """
-function zscore(obs_data::AbstractMatrix{T}, intv_data::AbstractMatrix{T}) where T
+function zscore(
+        obs_data::AbstractMatrix{T}, 
+        intv_data::AbstractMatrix{T}
+    ) where T
     npatients, ngenes = size(intv_data)
     size(obs_data, 2) == ngenes || error("Both input should have same number of genes (columns)")
 
@@ -22,6 +26,25 @@ function zscore(obs_data::AbstractMatrix{T}, intv_data::AbstractMatrix{T}) where
     end
     
     return zscore_intv
+end
+
+function zscore(
+        obs_data::AbstractMatrix{T}, 
+        intv_data::AbstractVector{T}
+    ) where T
+    ngenes = length(intv_data)
+    size(obs_data, 2) == ngenes || error("Number of genes mismatch")
+
+    # observational data's mean and std
+    μ = mean(obs_data, dims=1)
+    σ = std(obs_data, dims=1)
+
+    # compute squared Z scores for each patient in interventional data
+    zs = Float64[]
+    for i in 1:ngenes
+        push!(zs, abs2((intv_data[i] - μ[i]) / σ[i]) )
+    end
+    return zs
 end
 
 """
@@ -75,7 +98,6 @@ function root_cause_discovery(
         Xobs::AbstractMatrix{T}, 
         Xint::AbstractVector{T},
         perm::AbstractVector{Int}; 
-        verbose=true,
     ) where T
     n, p = size(Xobs)
     p == length(Xint) || error("dimension mismatch!")
@@ -116,36 +138,32 @@ function root_cause_discovery(
     return abs.(X̃)
 end
 
-# used in simulation
 # this is a main RootCauseDiscovery algorith, without dimensional reduction
 function root_cause_discovery_one_subject_all_perm(
-        transform_obs::DataFrame,  # col 1 is gene name, every other cols are different samples
-        transform_int::DataFrame,  # this MUST be a 2 column dataframe, col1 = gene name, col2 = gene counts for a patient
+        Xobs::AbstractMatrix, 
+        Xint::AbstractVector,
         threshold::Float64;
-        verbose::Bool=true,
-        nshuffles::Int=1
-        )
-    # check for errors
-    ngenes = size(transform_obs, 1)
-    gene_names = transform_obs[!, 1]
-    gene_names == transform_int[!, 1] || error("col1 of transform_obs and transform_int should be the same")
-    size(transform_int, 2) == 2 || error("transform_int MUST be a 2 column dataframe")
-    
-    # compute Z scores (1st column of both dataframe is gene name)
-    Xobs = transform_obs[:, 2:end] |> Matrix |> transpose
-    Xint = transform_int[:, 2]'
-    z = zscore(Xobs, Xint) |> vec
-    
+        nshuffles::Int=1,
+        verbose=true
+    )
+    p = size(Xobs, 2)
+    p == length(Xint) || error("Number of genes mismatch")
+
+    # compute z scores
+    z = zscore(Xobs, Xint)
+
     # compute permutations to try
     permutations = compute_permutations(z, threshold=threshold, nshuffles=nshuffles)
-    println("Trying $(length(permutations)) permutations")
+    verbose && println("Trying $(length(permutations)) permutations")
 
     # try all permutations
-    X̃all = zeros(ngenes, length(permutations))
+    X̃all = zeros(p, length(permutations))
     for (i, perm) in enumerate(permutations)
-        X̃ = root_cause_discovery(Xobs_perm, Xint_perm, perm, verbose=verbose)
+        X̃ = root_cause_discovery(Xobs, Xint, perm)
         X̃all[:, i] .= X̃
     end
+
+    # select among X̃all (todo)
 
     return X̃all
 end
@@ -272,13 +290,14 @@ function root_cause_discovery_high_dimensional(
         method::String; # either "cv" or "largest_support"
         y_idx_z_threshold=1.5,
         nshuffles::Int = 1,
+        verbose = true
     )
     # compute some guesses for root cause index
     i = findfirst(x -> x == patient_id, ground_truth[!, "Patient ID"])
     Xint_sample = Xint[i, :]
     z = zscore(Xobs, Xint_sample') |> vec
     y_indices = compute_y_idx(z, z_threshold=y_idx_z_threshold)
-    println("Trying $(length(y_indices)) y_idx")
+    verbose && println("Trying $(length(y_indices)) y_idx")
     
     results = Matrix{Float64}[]
     for y_idx in y_indices
