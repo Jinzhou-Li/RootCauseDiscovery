@@ -128,9 +128,9 @@ function root_cause_discovery(
     # compute cholesky
     L = cholesky(Σ̂)
 
-    # solve for X̃ in LX̃ = Xint - μ̂ 
+    # solve for X̃ in LX̃ = Xint_perm - μ̂ 
     X̃ = zeros(p)
-    ldiv!(X̃, L.L, Xint - μ̂)
+    ldiv!(X̃, L.L, Xint_perm - μ̂)
     
     # undo the permutations
     invpermute!(X̃, perm)
@@ -157,15 +157,31 @@ function root_cause_discovery_one_subject_all_perm(
     verbose && println("Trying $(length(permutations)) permutations")
 
     # try all permutations
-    X̃all = zeros(p, length(permutations))
-    for (i, perm) in enumerate(permutations)
+    X̃all = Vector{Float64}[]
+    for perm in permutations
         X̃ = root_cause_discovery(Xobs, Xint, perm)
-        X̃all[:, i] .= X̃
+        push!(X̃all, X̃)
     end
 
-    # select among X̃all (todo)
+    # select among X̃all
+    permutation_scores = zeros(length(permutations))
+    for (i, X̃) in enumerate(X̃all)
+        permutation_scores[i] = (sort(X̃)[end] - sort(X̃)[end-1]) / sort(X̃)[end-1]
+    end
+    best_permutation_index = findmax(permutation_scores)[2]
+    cholesky_score = X̃all[best_permutation_index]
 
-    return X̃all
+
+    @show permutations
+    @show X̃all_test
+    @show permutation_scores
+
+    # permute cholesky scores back to original variable's order
+    # best_permutation = permutations[best_permutation_index]
+    # best_inv_permutation = invperm(best_permutation)
+    # cholesky_score = cholesky_score[best_inv_permutation]
+
+    return cholesky_score
 end
 
 function find_largest(X̃all::Vector{Vector{Float64}})

@@ -11,6 +11,8 @@ from sklearn.linear_model import LassoCV, Lasso
 
 # `obs_data` and `intv_data` are matrices
 def zscore(obs_data, intv_data):
+    if intv_data.ndim == 1:
+        return zscore_vec(obs_data, intv_data)
     n, p = intv_data.shape
     assert obs_data.shape[1] == p, "Both inputs should have same number of variables"
     # observational data's mean and std
@@ -22,6 +24,17 @@ def zscore(obs_data, intv_data):
         zs = [(abs((intv_data[i, j] - mu[j]) / sigma[j]))**2 for j in range(p)]
         zscore_intv[i,:] = zs
     return zscore_intv
+
+# `obs_data` is matrix, `intv_data` is vector
+def zscore_vec(obs_data, intv_data):
+    ngenes = len(intv_data)
+    assert obs_data.shape[1] == ngenes, "Number of genes mismatch"
+    # observational data's mean and std
+    mu = np.mean(obs_data, axis=0)
+    sigma = np.std(obs_data, axis=0)
+    # compute squared Z scores for each patient in interventional data
+    zs = [(abs((intv_data[i] - mu[i]) / sigma[i]))**2 for i in range(ngenes)]
+    return zs
 
 # `z` is a vector
 def compute_permutations(z, threshold=2, nshuffles=1):
@@ -65,27 +78,39 @@ def root_cause_discovery(Xobs, Xint, perm):
         sigma = sigma + abs(min_eigenvalue) + 1e-6
     # compute cholesky
     L = LA.cholesky(sigma)
-    # solve for Xtilde in L*Xtilde = Xint - mu
-    X_tilde = np.linalg.solve(L, Xint - mu)
+    # solve for Xtilde in L*Xtilde = Xint_perm - mu
+    X_tilde = np.linalg.solve(L, Xint_perm - mu)
     # undo the permutations
     X_tilde = X_tilde[perm.argsort()]
     return abs(X_tilde)
 
 
-def root_cause_discovery_one_subject_all_perm(X_obs, X_int, threshold, nshuffles=1):
-    n, p = X_obs.shape
-    assert p == len(X_int), "dimensions mismatch!"
-    # compute Z scores
-    z = zscore(X_obs, np.matrix(X_int))[0]
+def root_cause_discovery_one_subject_all_perm(Xobs, Xint, threshold, nshuffles=1, verbose=True):
+    p = Xobs.shape[1]
+    assert p == len(Xint), "Number of genes mismatch"
+    # compute z scores
+    z = zscore(Xobs, Xint)
     # compute permutations to try
     permutations = compute_permutations(z, threshold=threshold, nshuffles=nshuffles)
+    if verbose: 
+        print("Trying", len(permutations), "permutations")
     # try all permutations
-    print("Trying", len(permutations), "permutations")
-    X_tilde_all = np.zeros((p, len(permutations)))
-    for i, perm in enumerate(permutations):
-        X_tilde = root_cause_discovery(X_obs, X_int, perm)
-        X_tilde_all[:, i] = X_tilde
-    return X_tilde_all
+    X_all = []
+    for perm in permutations:
+        X = root_cause_discovery(Xobs, Xint, perm)
+        X_all.append(X)
+    # select among X_all
+    permutation_scores = np.zeros(len(permutations))
+    for i in range(len(X_all)):
+        sorted_X = sorted(X_all[i])
+        permutation_scores[i] = (sorted_X[-1] - sorted_X[-2]) / sorted_X[-2]
+    best_permutation_index = np.argmax(permutation_scores)
+    cholesky_score = X_all[best_permutation_index]
+    # permute cholesky scores back to original variable's order
+    best_permutation = permutations[best_permutation_index]
+    best_inv_permutation = np.argsort(best_permutation)
+    cholesky_score = cholesky_score[best_inv_permutation]
+    return cholesky_score
 
 
 # `Xall` is a vector of vectors
