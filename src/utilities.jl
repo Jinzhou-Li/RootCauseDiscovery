@@ -171,16 +171,6 @@ function root_cause_discovery_one_subject_all_perm(
     best_permutation_index = findmax(permutation_scores)[2]
     cholesky_score = X̃all[best_permutation_index]
 
-
-    @show permutations
-    @show X̃all_test
-    @show permutation_scores
-
-    # permute cholesky scores back to original variable's order
-    # best_permutation = permutations[best_permutation_index]
-    # best_inv_permutation = invperm(best_permutation)
-    # cholesky_score = cholesky_score[best_inv_permutation]
-
     return cholesky_score
 end
 

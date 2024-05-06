@@ -95,21 +95,17 @@ def root_cause_discovery_one_subject_all_perm(Xobs, Xint, threshold, nshuffles=1
     if verbose: 
         print("Trying", len(permutations), "permutations")
     # try all permutations
-    X_all = []
+    Xtilde_all = []
     for perm in permutations:
-        X = root_cause_discovery(Xobs, Xint, perm)
-        X_all.append(X)
-    # select among X_all
+        Xtilde = root_cause_discovery(Xobs, Xint, perm)
+        Xtilde_all.append(Xtilde)
+    # select among Xtilde_all
     permutation_scores = np.zeros(len(permutations))
-    for i in range(len(X_all)):
-        sorted_X = sorted(X_all[i])
+    for i in range(len(Xtilde_all)):
+        sorted_X = sorted(Xtilde_all[i])
         permutation_scores[i] = (sorted_X[-1] - sorted_X[-2]) / sorted_X[-2]
     best_permutation_index = np.argmax(permutation_scores)
-    cholesky_score = X_all[best_permutation_index]
-    # permute cholesky scores back to original variable's order
-    best_permutation = permutations[best_permutation_index]
-    best_inv_permutation = np.argsort(best_permutation)
-    cholesky_score = cholesky_score[best_inv_permutation]
+    cholesky_score = Xtilde_all[best_permutation_index]
     return cholesky_score
 
 
