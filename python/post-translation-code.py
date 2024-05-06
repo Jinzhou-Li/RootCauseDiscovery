@@ -150,3 +150,54 @@ def reduce_dimension(y_idx, Xobs, Xint, method, verbose=True):
     # return
     return Xobs_new, Xint_sample_new, selected_idx
 
+# returns: a rank for each variable (1st variable = most likely to be root cause, ... etc)
+def root_cause_discovery_high_dimensional(
+        Xobs, 
+        Xint,
+        method,
+        y_idx_z_threshold=1.5,
+        permutation_thresholds=np.arange(0.1, 5, 0.2),
+        nshuffles=1,
+        verbose=True):
+    n, p = Xobs.shape
+    z = zscore(Xobs, Xint)
+    y_indices = np.where(z > y_idx_z_threshold)[0]
+    if verbose:
+        print(f"Trying {len(y_indices)} y_indices")
+    # check for desired pattern
+    record_match = np.zeros(len(y_indices))
+    for (i, y_idx) in enumerate(y_indices):
+        best_permutation_score = 0.0
+        best_Xtilde = []
+        # treat one column of Xobs as response
+        Xobs_new, Xint_sample_new, _ = reduce_dimension(
+            y_idx, Xobs, Xint, method
+        )
+        # try different permutations
+        for thrs in permutation_thresholds:
+            cholesky_score = root_cause_discovery_one_subject_all_perm(Xobs_new, 
+                                                            Xint_sample_new, 
+                                                            threshold=thrs,
+                                                            nshuffles=nshuffles,
+                                                            verbose=verbose)
+            sorted_X = sort(cholesky_score)
+            current_score = (sorted_X[-1] - sorted_X[-2]) / sorted_X[-2]
+            if current_score > best_permutation_score:
+                best_permutation_score = current_score
+                best_Xtilde = cholesky_score
+        # check if the discovered "root cause" in best_Xtilde matches y_idx
+        if np.argmax(best_Xtilde) == y_idx:
+            record_match[i] = 1
+    # compare z score and record_match to determine rank of each var
+    original_rank = z.argsort().argsort()
+    offset = len(setdiff1d(range(p), y_indices)) + np.sum(record_match == 0)
+    variable_rank = []
+    for (i, zi) in enumerate(z):
+        used_as_response = i in y_indices
+        used_as_response_and_matched = (used_as_response and record_match[np.where(y_indices == i)] == 1)[0]
+        if used_as_response:
+            
+
+    # todo: return a Z-score modified rank
+
+    return best_Xtilde, y_indices
