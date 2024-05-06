@@ -6,7 +6,7 @@ import random
 
 from numpy import linalg as LA
 from scipy.linalg import cholesky
-from sklearn.linear_model import LassoCV, Lasso
+from sklearn.linear_model import LassoCV, Lasso, lasso_path
 
 
 # `obs_data` and `intv_data` are matrices
@@ -122,31 +122,31 @@ def find_second_largest(Xall):
     return second_largest
 
 
-def reduce_genes(patient_id, y_idx, Xobs, Xint, ground_truth, method):
+# this is same function as reduce_gene
+def reduce_dimension(y_idx, Xobs, Xint, method, verbose=True):
     n, p = Xobs.shape
     # response and design matrix for Lasso
     y = Xobs[:, y_idx]
-    X = np.delete(Xobs, y_idx, axis=0)
+    X = np.delete(Xobs, y_idx, axis=1)
     # fit lasso
-    beta_final = None
     if method == "cv":
         lasso_cv = LassoCV().fit(X, y)
         beta_final = lasso_cv.coef_
     elif method == "largest_support":
-        lasso = Lasso().fit(X, y)
-        beta_final = lasso.coef_
+        _, coef_path, _ = lasso_path(X, y)
+        beta_final = coef_path[:, -1]
     else:
         raise ValueError("method should be `cv` or `largest_support`")
     nz = np.count_nonzero(beta_final)
-    print("Lasso found ", nz, " non-zero entries")
+    if verbose:
+        print("Lasso found ", nz, " non-zero entries")
     # for non-zero idx, find the original indices in Xobs, and don't forget to include y_idx
     selected_idx = np.nonzero(beta_final)[0]
     selected_idx = np.array([idx + 1 if idx >= y_idx else idx for idx in selected_idx])
     selected_idx = np.append(selected_idx, y_idx)
     # return the subset of variables of Xobs that were selected
     Xobs_new = Xobs[:, selected_idx]
-    i = ground_truth[ground_truth["Patient ID"] == patient_id]
-    Xint_sample_new = Xint[i, selected_idx]
+    Xint_sample_new = Xint[selected_idx]
     # return
     return Xobs_new, Xint_sample_new, selected_idx
 
