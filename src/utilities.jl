@@ -262,7 +262,7 @@ function root_cause_discovery_reduced_dimensional(
         Threads.@threads for i in eachindex(permutations)
             perm = permutations[i]
             X̃all[i] = root_cause_discovery(
-                Xobs_new, Xint_sample_new, perm; verbose=false
+                Xobs_new, Xint_sample_new, perm
             )
         end
         largest_cur, largest_idx_cur = find_largest(X̃all)
