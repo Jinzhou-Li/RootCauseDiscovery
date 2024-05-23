@@ -157,7 +157,6 @@ def reduce_dimension(y_idx, Xobs, Xint, method, verbose=True):
     # return
     return Xobs_new, Xint_sample_new, selected_idx
 
-# returns: a rank for each variable (1st variable = most likely to be root cause, ... etc)
 def root_cause_discovery_high_dimensional(
         Xobs, 
         Xint,
@@ -205,6 +204,6 @@ def root_cause_discovery_high_dimensional(
         if used_as_response:
             
 
-    # todo: return a Z-score modified rank
+    # todo: 
 
     return best_Xtilde, y_indices
