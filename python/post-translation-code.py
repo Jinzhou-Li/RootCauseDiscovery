@@ -99,14 +99,21 @@ def root_cause_discovery_one_subject_all_perm(Xobs, Xint, threshold, nshuffles=1
     for perm in permutations:
         Xtilde = root_cause_discovery(Xobs, Xint, perm)
         Xtilde_all.append(Xtilde)
-    # select among Xtilde_all
-    permutation_scores = np.zeros(len(permutations))
+    # assign the final root cause score for each variable
+    root_cause_score = np.zeros(p)
     for i in range(len(Xtilde_all)):
         sorted_X = sorted(Xtilde_all[i])
-        permutation_scores[i] = (sorted_X[-1] - sorted_X[-2]) / sorted_X[-2]
-    best_permutation_index = np.argmax(permutation_scores)
-    cholesky_score = Xtilde_all[best_permutation_index]
-    return cholesky_score
+        nonzero_quant_ratio = (sorted_X[-1] - sorted_X[-2]) / sorted_X[-2]
+        max_index = np.argmax(Xtilde_all[i])
+        if root_cause_score[max_index] < nonzero_quant_ratio:
+            root_cause_score[max_index] = nonzero_quant_ratio
+    # assign final root cause score for variables that never have maximal Xtilde_i
+    idx1 = np.where(root_cause_score != 0)[0]
+    idx2 = np.where(root_cause_score == 0)[0]
+    max_RC_score_idx2 = np.min(root_cause_score[idx1]) - 0.0001
+    z_array = np.array(z)
+    root_cause_score[idx2] = z_array[idx2] / (np.max(z_array[idx2]) / max_RC_score_idx2)
+    return root_cause_score
 
 
 # `Xall` is a vector of vectors
