@@ -26,9 +26,9 @@ def zscore_vec(X_obs, X_int):
     assert X_obs.shape[1] == ngenes, "Number of genes mismatch"
     # observational data's mean and std
     mu = np.mean(X_obs, axis=0)
-    sigma = np.std(X_obs, axis=0)
+    sigma = np.std(X_obs, axis=0, ddof=1)
     # compute squared Z scores for each patient in interventional data
-    zs = [(abs((X_int[i] - mu[i]) / sigma[i]))**2 for i in range(ngenes)]
+    zs = np.array([(abs((X_int[i] - mu[i]) / sigma[i]))**2 for i in range(ngenes)])
     return zs
 
 # `z` is a vector
@@ -95,6 +95,7 @@ def root_cause_discovery_main(X_obs, X_int, thresholds, nshuffles=1, verbose=Tru
             print("Trying", len(permutations), "permutations for threshold", threshold)
 
         # try all permutations to calculate 'Xtilde'
+        # TOdo: shorten/combine below
         Xtilde_all = []
         for perm in permutations:
             Xtilde = root_cause_discovery(X_obs, X_int, perm)
@@ -106,11 +107,13 @@ def root_cause_discovery_main(X_obs, X_int, thresholds, nshuffles=1, verbose=Tru
             max_index = np.argmax(Xtilde_all[i])
             if root_cause_score[max_index] < OneNonZero_quantification:
                 root_cause_score[max_index] = OneNonZero_quantification
+
     # assign final root cause score for variables that never had maximal Xtilde_i
     idx2 = np.where(root_cause_score == 0)[0]
     if len(idx2) != 0:
         idx1 = np.where(root_cause_score != 0)[0]
         max_RC_score_idx2 = np.min(root_cause_score[idx1]) - 0.0001
+        # todo: no need to force it to be an array now
         z_array = np.array(z)
         root_cause_score[idx2] = z_array[idx2] / (np.max(z_array[idx2]) / max_RC_score_idx2)
     return root_cause_score
@@ -118,7 +121,6 @@ def root_cause_discovery_main(X_obs, X_int, thresholds, nshuffles=1, verbose=Tru
 
 # this is same function as 'reduce_gene'
 def reduce_dimension(y_idx, X_obs, X_int, method, verbose=True):
-    n, p = X_obs.shape
     # response and design matrix for Lasso
     y = X_obs[:, y_idx]
     X = np.delete(X_obs, y_idx, axis=1)
@@ -140,7 +142,11 @@ def reduce_dimension(y_idx, X_obs, X_int, method, verbose=True):
     selected_idx = np.append(selected_idx, y_idx)
     # return the subset of variables of X_obs that were selected
     X_obs_new = X_obs[:, selected_idx]
-    X_int_sample_new = X_int[selected_idx]
+
+    if len(X_int.shape) == 2:
+        X_int_sample_new = X_int[:, selected_idx]
+    elif len(X_int.shape) == 1:
+        X_int_sample_new = X_int[selected_idx]
     # return
     return X_obs_new, X_int_sample_new, selected_idx
 
@@ -149,48 +155,47 @@ def root_cause_discovery_high_dimensional(
         X_int,
         method,
         y_idx_z_threshold=1.5,
-        permutation_thresholds=np.arange(0.1, 5, 0.2),
+        thresholds=np.arange(0.1, 5, 0.2),
         nshuffles=1,
         verbose=True):
     n, p = X_obs.shape
     z = zscore(X_obs, X_int)
     y_indices = np.where(z > y_idx_z_threshold)[0]
-    if verbose:
-        print(f"Trying {len(y_indices)} y_indices")
-    # check for desired pattern
-    record_match = np.zeros(len(y_indices))
-    for (i, y_idx) in enumerate(y_indices):
-        best_permutation_score = 0.0
-        best_Xtilde = []
-        # treat one column of X_obs as response
-        X_obs_new, X_int_sample_new, _ = reduce_dimension(
-            y_idx, X_obs, X_int, method
-        )
-        # try different permutations
-        for thrs in permutation_thresholds:
-            cholesky_score = root_cause_discovery_one_subject_all_perm(X_obs_new,
-                                                            X_int_sample_new,
-                                                            threshold=thrs,
-                                                            nshuffles=nshuffles,
-                                                            verbose=verbose)
-            sorted_X = sort(cholesky_score)
-            current_score = (sorted_X[-1] - sorted_X[-2]) / sorted_X[-2]
-            if current_score > best_permutation_score:
-                best_permutation_score = current_score
-                best_Xtilde = cholesky_score
-        # check if the discovered "root cause" in best_Xtilde matches y_idx
-        if np.argmax(best_Xtilde) == y_idx:
-            record_match[i] = 1
-    # compare z score and record_match to determine rank of each var
-    original_rank = z.argsort().argsort()
-    offset = len(setdiff1d(range(p), y_indices)) + np.sum(record_match == 0)
-    variable_rank = []
-    # for (i, zi) in enumerate(z):
-    #     used_as_response = i in y_indices
-    #     used_as_response_and_matched = (used_as_response and record_match[np.where(y_indices == i)] == 1)[0]
-    #     if used_as_response:
-            
 
-    # todo: 
+    # computationally expensive!
+    root_cause_score = np.zeros(p)
+    for y_idx in y_indices:
+        X_obs_new, X_int_sample_new, selected_idx = reduce_dimension(y_idx, X_obs, X_int, method, verbose)
 
-    return best_Xtilde, y_indices
+        z_new = zscore(X_obs_new, X_int_sample_new)
+
+        best_Xtilde = 0
+        best_OneNonZero_quantification = 0
+        for threshold in thresholds:
+            # compute permutations to try
+            permutations = compute_permutations(z_new, threshold=threshold, nshuffles=nshuffles)
+            if verbose:
+                print("Trying", len(permutations), "permutations for threshold", threshold)
+
+            # try all permutations to calculate 'Xtilde'
+            for perm in permutations:
+                Xtilde = root_cause_discovery(X_obs_new, X_int_sample_new, perm)
+                sorted_X = sorted(Xtilde)
+                OneNonZero_quantification = (sorted_X[-1] - sorted_X[-2]) / sorted_X[-2]
+
+                if z_new[np.argmax(
+                        Xtilde)] > y_idx_z_threshold and OneNonZero_quantification > best_OneNonZero_quantification:
+                    best_Xtilde = Xtilde
+                    best_OneNonZero_quantification = OneNonZero_quantification
+
+        if np.argmax(best_Xtilde) == len(best_Xtilde):  # if match y_idx
+            root_cause_score[y_idx] = best_OneNonZero_quantification
+
+    # assign final root cause score for variables that never had maximal Xtilde_i
+    idx2 = np.where(root_cause_score == 0)[0]
+    if len(idx2) != 0:
+        idx1 = np.where(root_cause_score != 0)[0]
+        max_RC_score_idx2 = np.min(root_cause_score[idx1]) - 0.0001
+        root_cause_score[idx2] = z[idx2] / (np.max(z[idx2]) / max_RC_score_idx2)
+
+    return root_cause_score
