@@ -58,39 +58,37 @@ def B_hub_func(num_hub, size_up_block, size_low_block, intersect_prop, s_B, B_va
 def rescale_B_func(B, var_X_design, sigma2_error, tol, step_size, max_count):
     p = B.shape[1]
     I = np.identity(p)
-
-    var_X_ori = np.diag(np.dot(linalg.solve(I - B, np.diag(sigma2_error)), linalg.inv(I - B).T))
+    assert step_size < 1, "step_size must be smaller than 1"
 
     # Note that using [] will point to memory so the value of the input 'sigma2_error' will also change, so we generate a copy
     sigma2_error_copy = sigma2_error.copy()
+
     for i in range(p):
-        if np.sum(B[i]) == 0:
+        # if it is a source node
+        if np.sum(B[i] != 0) == 0:
             sigma2_error_copy[i] = var_X_design[i]
-        elif np.sum(B[i]) > 0:  # if not a source node
-            count_while = 0
-            rescale_temp = np.sqrt(np.abs(var_X_ori[i] - sigma2_error_copy[i]))
-            B_temp = B.copy()
-
-            IB_inv_temp = linalg.solve(I - B_temp, np.eye(p))
+        # if it is not a source node
+        elif np.sum(B[i] != 0) > 0:
+            IB_inv_temp = linalg.solve(I - B, np.eye(p))
             var_temp = (IB_inv_temp[i] * sigma2_error_copy) @ IB_inv_temp[i].T
+            rescale_temp = np.sqrt(np.abs(var_temp - sigma2_error_copy[i]))
 
+            count_while = 0
             while abs(var_temp - var_X_design[i]) > tol:
                 if var_temp - var_X_design[i] > 0:
                     rescale_temp = rescale_temp * (1 + step_size)
                     B_temp = B.copy()
-                    B_temp[i] = B_temp[i] / rescale_temp
+                    B_temp[i] = B[i] / rescale_temp
 
                     IB_inv_temp = linalg.solve(I - B_temp, np.eye(p))
                     var_temp = (IB_inv_temp[i] * sigma2_error_copy) @ IB_inv_temp[i].T
-
-                if var_temp - var_X_design[i] < 0:
+                else:
                     rescale_temp = rescale_temp * (1 - step_size)
                     B_temp = B.copy()
-                    B_temp[i] = B_temp[i] / rescale_temp
+                    B_temp[i] = B[i] / rescale_temp
 
                     IB_inv_temp = linalg.solve(I - B_temp, np.eye(p))
                     var_temp = (IB_inv_temp[i] * sigma2_error_copy) @ IB_inv_temp[i].T
-
                 count_while += 1
                 if count_while > max_count:
                     break
