@@ -2,7 +2,8 @@ import numpy as np
 import random
 from numpy import linalg as LA
 from sklearn.linear_model import LassoCV, lasso_path
-
+import warnings  # ignore the warnings
+from sklearn.covariance import ShrunkCovariance
 
 # `X_obs` and `X_int` are matrices
 def zscore(X_obs, X_int):
@@ -67,7 +68,10 @@ def root_cause_discovery(X_obs, X_int, perm):
     if n > p:
         sigma = np.cov(X_obs_perm.transpose())
     else:
-        raise Exception("covariance shrinkage not implemented")
+        # maybe try other choices?
+        cov = ShrunkCovariance().fit(X_obs_perm)
+        sigma = cov.covariance_
+        # raise Exception("covariance shrinkage not implemented")
     # ad-hoc way to ensure PSD
     min_eigenvalue = min(LA.eigvals(sigma))
     if min_eigenvalue < 1e-6:
@@ -95,16 +99,11 @@ def root_cause_discovery_main(X_obs, X_int, thresholds, nshuffles=1, verbose=Tru
             print("Trying", len(permutations), "permutations for threshold", threshold)
 
         # try all permutations to calculate 'Xtilde'
-        # TOdo: shorten/combine below
-        Xtilde_all = []
         for perm in permutations:
             Xtilde = root_cause_discovery(X_obs, X_int, perm)
-            Xtilde_all.append(Xtilde)
-        # update root cause scores
-        for i in range(len(Xtilde_all)):
-            sorted_X = sorted(Xtilde_all[i])
+            sorted_X = sorted(Xtilde)
             OneNonZero_quantification = (sorted_X[-1] - sorted_X[-2]) / sorted_X[-2]
-            max_index = np.argmax(Xtilde_all[i])
+            max_index = np.argmax(Xtilde)
             if root_cause_score[max_index] < OneNonZero_quantification:
                 root_cause_score[max_index] = OneNonZero_quantification
 
@@ -113,9 +112,7 @@ def root_cause_discovery_main(X_obs, X_int, thresholds, nshuffles=1, verbose=Tru
     if len(idx2) != 0:
         idx1 = np.where(root_cause_score != 0)[0]
         max_RC_score_idx2 = np.min(root_cause_score[idx1]) - 0.0001
-        # todo: no need to force it to be an array now
-        z_array = np.array(z)
-        root_cause_score[idx2] = z_array[idx2] / (np.max(z_array[idx2]) / max_RC_score_idx2)
+        root_cause_score[idx2] = z[idx2] / (np.max(z[idx2]) / max_RC_score_idx2)
     return root_cause_score
 
 
@@ -126,11 +123,15 @@ def reduce_dimension(y_idx, X_obs, X_int, method, verbose=True):
     X = np.delete(X_obs, y_idx, axis=1)
     # fit lasso
     if method == "cv":
-        lasso_cv = LassoCV().fit(X, y)
-        beta_final = lasso_cv.coef_
+        with warnings.catch_warnings():  # ignore the convergence warnings from 'enet_path'
+            warnings.simplefilter("ignore")
+            lasso_cv = LassoCV().fit(X, y)
+            beta_final = lasso_cv.coef_
     elif method == "largest_support":
-        _, coef_path, _ = lasso_path(X, y)
-        beta_final = coef_path[:, -1]
+        with warnings.catch_warnings():  # ignore the convergence warnings from 'enet_path'
+            warnings.simplefilter("ignore")
+            _, coef_path, _ = lasso_path(X, y)
+            beta_final = coef_path[:, -1]
     else:
         raise ValueError("method should be `cv` or `largest_support`")
     nz = np.count_nonzero(beta_final)
@@ -177,7 +178,7 @@ def root_cause_discovery_high_dimensional(
             if verbose:
                 print("Trying", len(permutations), "permutations for threshold", threshold)
 
-            # try all permutations to calculate 'Xtilde'
+            # try all permutations to calculate 'Xtilde' and update root_cause_score
             for perm in permutations:
                 Xtilde = root_cause_discovery(X_obs_new, X_int_sample_new, perm)
                 sorted_X = sorted(Xtilde)

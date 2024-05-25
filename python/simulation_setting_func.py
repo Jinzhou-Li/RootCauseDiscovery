@@ -97,9 +97,40 @@ def rescale_B_func(B, var_X_design, sigma2_error, tol, step_size, max_count):
 
     return B, sigma2_error_copy
 
+# Generate a random or hub DAG for simulation, with permuted variable ordering
+def generate_setting(dag_type, s_B, B_value_min, B_value_max, err_min, err_max, var_X_min, var_X_max,
+                     p=0, num_hub=0, size_up_block=0, size_low_block=0, intersect_prop=0):
+    if dag_type == "random":
+        if p == 0:
+            raise ValueError("p is needed for random dag")
+        B_unscaled = B_random(p, s_B, B_value_min, B_value_max)
+    elif dag_type == "hub":
+        if num_hub == 0 or size_up_block == 0 or size_low_block == 0 or intersect_prop == 0:
+            raise ValueError("num_hub, size_up_block, size_low_block, and intersect_prop are needed for hub dag")
+        p = num_hub + num_hub * (size_up_block + size_low_block)
+        B_unscaled = B_hub_func(num_hub, size_up_block, size_low_block, intersect_prop, s_B, B_value_min, B_value_max)
 
-# Generate n observartional data and m interventional data
+    sigma2_error_raw = np.random.uniform(err_min, err_max, p)  # rep(var_error,p) # do not make error variance the same!
+    var_X_design = np.random.uniform(var_X_min, var_X_max, p)  # preset variance of X we want to get based on the SEM
+    B_scaled, sigma2_error_new = rescale_B_func(B_unscaled, var_X_design, sigma2_error_raw, tol=1, step_size=0.1,
+                                                max_count=500)
 
+    # # check that we indeed make the variance of X similar to the preset one
+    I = np.identity(p)
+    var_X_new = np.diag(np.dot(linalg.solve(I - B_scaled, np.diag(sigma2_error_new)), linalg.inv(I - B_scaled).T))
+    max_diff = np.max(np.abs(var_X_new - var_X_design))
+    if max_diff > 5:
+        print("the max difference between var_X_new and var_X_design is larger than 5")
+
+    ordering = np.random.permutation(np.arange(p))
+    Permut_mat = np.eye(p)[ordering]
+    B = Permut_mat @ B_scaled @ Permut_mat.T
+    sigma2_error = np.diag(sigma2_error_new[ordering])
+
+    b = np.random.uniform(-5, 5, p)  # intercept
+    return B, sigma2_error, b
+
+# Generate n observartional and m interventional data
 def generate_data(n, m, p, B, sigma2_error, b, int_mean, int_sd):
     # True root causes
     RC = np.random.choice(np.arange(p), size=m, replace=True)
