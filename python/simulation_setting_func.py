@@ -74,6 +74,7 @@ def rescale_B_func(B, var_X_design, sigma2_error, tol, step_size, max_count):
             rescale_temp = np.sqrt(np.abs(var_temp - sigma2_error_copy[i]))
 
             count_while = 0
+            B_temp = B.copy()
             while abs(var_temp - var_X_design[i]) > tol:
                 if var_temp - var_X_design[i] > 0:
                     rescale_temp = rescale_temp * (1 + step_size)
