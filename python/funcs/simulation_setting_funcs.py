@@ -149,3 +149,35 @@ def generate_data(n, m, p, B, sigma2_error, b, int_mean, int_sd):
         X_int[i, :] = linalg.solve(I - B, (b + error + delta).T).reshape(p)
 
     return X_obs, X_int, RC
+
+
+def generate_data_latent(n, m, p, latent_proportion, B, sigma2_error, b, int_mean, int_sd):
+    # randomly sample some variables as latent
+    latent_idx = np.random.choice(np.arange(p), size=int(latent_proportion * p), replace=False)
+    non_latent_idx = np.setdiff1d(np.arange(p), latent_idx)
+
+    # randomly sample true root causes from non-latent variables
+    RC = np.random.choice(non_latent_idx, size=m, replace=True)
+
+    I = np.identity(p)
+
+    X_obs = np.zeros((n, p))
+    X_int = np.zeros((m, p))
+    for i in range(n):
+        error = np.random.multivariate_normal(np.repeat(0, p), sigma2_error, 1)
+        X_obs[i, :] = linalg.solve(I - B, (b + error).T).reshape(p)
+    for i in range(m):
+        delta = np.repeat(0, p)
+        delta[RC[i]] = np.random.normal(int_mean, int_sd, 1)
+        error = np.random.multivariate_normal(np.repeat(0, p), sigma2_error, 1)
+        X_int[i, :] = linalg.solve(I - B, (b + error + delta).T).reshape(p)
+
+    # remove latent variables
+    X_obs_new = X_obs[:, non_latent_idx]
+    X_int_new = X_int[:, non_latent_idx]
+    # update RC_idx
+    RC_new = np.zeros(m)
+    for i in range(m):
+        RC_new[i] = RC[i] - np.sum(latent_idx < RC[i])
+
+    return X_obs_new, X_int_new, RC_new
