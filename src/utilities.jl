@@ -183,11 +183,26 @@ function reduce_genes(
     if method == "cv"
         cv = glmnetcv(X, y)
         beta_final = GLMNet.coef(cv)
+        if count(!iszero, beta_final) == 0
+            return reduce_genes(patient_id, y_idx, Xobs, Xint, group_truth, "nhalf")
+        end
     elseif method == "largest_support"
         path = glmnet(X, y)
         beta_final = path.betas[:, end]
+    elseif method == "nhalf" # ad-hoc method to choose ~n/2 number of non-zero betas
+        path = glmnet(X, y)
+        beta_final = path.betas[:, 1]
+        best_ratio = abs(0.5 - count(!iszero, beta_final) / n)
+        for beta in eachcol(path.betas)
+            new_ratio = abs(0.5 - count(!iszero, beta) / n)
+            if new_ratio < best_ratio
+                best_ratio = new_ratio
+                beta_final = beta
+            end
+        end
+        beta_final = Vector(beta_final)
     else
-        error("method should be `cv` or `largest_support`")
+        error("method should be `cv`, `largest_support`, or `nhalf`")
     end
     nz = count(!iszero, beta_final)
     println("Lasso found $nz non-zero entries")
