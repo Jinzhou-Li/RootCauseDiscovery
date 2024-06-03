@@ -252,8 +252,7 @@ function root_cause_discovery_reduced_dimensional(
         Xobs_new::AbstractMatrix{Float64}, 
         Xint_sample_new::AbstractVector{Float64};
         nshuffles::Int = 1,
-        thresholds::Union{Nothing, Vector{Float64}} = nothing,
-        y_idx_z_threshold=1.5
+        thresholds::Union{Nothing, Vector{Float64}} = nothing
     )
     # first compute z score (needed to compute permutations)
     z = zscore(Xobs_new, Xint_sample_new') |> vec
@@ -289,7 +288,7 @@ function root_cause_discovery_reduced_dimensional(
     root_cause_score_y = 0.0
     for per in Iterators.reverse(perm)
         matched = size(Xobs_new, 2) == largest_idx[per]
-        if matched && z[largest_idx][per] > y_idx_z_threshold
+        if matched
             root_cause_score_y = diff_normalized[per]
             break
         end
@@ -355,7 +354,7 @@ function root_cause_discovery_high_dimensional(
     if length(idx2) != 0
         if length(idx1) != 0
             max_RC_score_idx = minimum(root_cause_scores[idx1]) - 0.00001
-            root_cause_scores[idx2] = z[idx2] ./ (maximum(z[idx2]) ./ max_RC_score_idx)
+            root_cause_scores[idx2] .= z[idx2] ./ (maximum(z[idx2]) ./ max_RC_score_idx)
         else
             # use z scores when everything is 0
             root_cause_scores = z
