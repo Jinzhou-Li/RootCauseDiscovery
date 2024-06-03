@@ -138,42 +138,6 @@ function root_cause_discovery(
     return abs.(X̃)
 end
 
-# this is a main RootCauseDiscovery algorith, without dimensional reduction
-function root_cause_discovery_one_subject_all_perm(
-        Xobs::AbstractMatrix, 
-        Xint::AbstractVector,
-        threshold::Float64;
-        nshuffles::Int=1,
-        verbose=true
-    )
-    p = size(Xobs, 2)
-    p == length(Xint) || error("Number of genes mismatch")
-
-    # compute z scores
-    z = zscore(Xobs, Xint)
-
-    # compute permutations to try
-    permutations = compute_permutations(z, threshold=threshold, nshuffles=nshuffles)
-    verbose && println("Trying $(length(permutations)) permutations")
-
-    # try all permutations
-    X̃all = Vector{Float64}[]
-    for perm in permutations
-        X̃ = root_cause_discovery(Xobs, Xint, perm)
-        push!(X̃all, X̃)
-    end
-
-    # select among X̃all
-    permutation_scores = zeros(length(permutations))
-    for (i, X̃) in enumerate(X̃all)
-        permutation_scores[i] = (sort(X̃)[end] - sort(X̃)[end-1]) / sort(X̃)[end-1]
-    end
-    best_permutation_index = findmax(permutation_scores)[2]
-    cholesky_score = X̃all[best_permutation_index]
-
-    return cholesky_score
-end
-
 function find_largest(X̃all::Vector{Vector{Float64}})
     p = length(X̃all)
     largest = Float64[]
