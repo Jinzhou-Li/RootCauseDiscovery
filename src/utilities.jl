@@ -355,7 +355,7 @@ function root_cause_discovery_high_dimensional(
     if length(idx2) != 0
         if length(idx1) != 0
             max_RC_score_idx = minimum(root_cause_scores[idx1]) - 0.00001
-            root_cause_scores[idx2] = z[idx2] ./ maximum(z[idx2]) ./ max_RC_score_idx
+            root_cause_scores[idx2] = z[idx2] ./ (maximum(z[idx2]) ./ max_RC_score_idx)
         else
             # use z scores when everything is 0
             root_cause_scores = z
