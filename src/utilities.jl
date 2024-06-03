@@ -243,8 +243,32 @@ function reduce_genes(
 end
 
 """
-Todo: combine with `root_cause_discovery_one_subject_all_perm`
+    get_abberant_thresholds(z_vec::AbstractVector{T}, [threshold_min], 
+        [threshold_max], [threshold_seq])
+
+Computes a list of threshold values (defaults to 0.1:0.2:5) that are 
+non-redundant based on the input z scores
 """
+function get_abberant_thresholds(
+        z_vec::AbstractVector{T};
+        threshold_min=0.1, 
+        threshold_max=5.0,
+        threshold_seq=0.2
+    ) where T
+    threshold_raw = collect(threshold_min:threshold_seq:threshold_max)
+    count_temp = 0
+    threshold_new = T[]
+    for threshold in threshold_raw
+        if count(x -> x >= threshold, z_vec) > 0
+            if count(x -> x <= threshold, z_vec) != count_temp
+                count_temp = count(x -> x <= threshold, z_vec)
+                push!(threshold_new, threshold)
+            end
+        end
+    end
+    return threshold_new
+end
+
 function root_cause_discovery_reduced_dimensional(
         Xobs_new::AbstractMatrix{Float64}, 
         Xint_sample_new::AbstractVector{Float64};
@@ -256,7 +280,7 @@ function root_cause_discovery_reduced_dimensional(
     # root cause discovery by trying lots of permutations
     largest, largest_idx = Float64[], Int[]
     second_largest = Float64[]
-    @showprogress for threshold in 0.1:0.2:5
+    @showprogress for threshold in get_abberant_thresholds(z)
         permutations = compute_permutations(z; threshold=threshold, nshuffles=nshuffles)
         X̃all = Vector{Vector{Float64}}(undef, length(permutations))
         Threads.@threads for i in eachindex(permutations)
