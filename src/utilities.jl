@@ -252,17 +252,24 @@ function root_cause_discovery_reduced_dimensional(
         Xobs_new::AbstractMatrix{Float64}, 
         Xint_sample_new::AbstractVector{Float64};
         nshuffles::Int = 1,
+        thresholds::Union{Nothing, Vector{Float64}} = nothing,
+        y_idx_z_threshold=1.5
     )
     # first compute z score (needed to compute permutations)
     z = zscore(Xobs_new, Xint_sample_new') |> vec
 
+    # if no thresholds are provided, compute default
+    if isnothing(thresholds)
+        thresholds = get_abberant_thresholds(z)
+    end
+
     # root cause discovery by trying lots of permutations
     largest, largest_idx = Float64[], Int[]
     second_largest = Float64[]
-    @showprogress for threshold in get_abberant_thresholds(z)
+    for threshold in thresholds
         permutations = compute_permutations(z; threshold=threshold, nshuffles=nshuffles)
         X̃all = Vector{Vector{Float64}}(undef, length(permutations))
-        Threads.@threads for i in eachindex(permutations)
+        for i in eachindex(permutations)
             perm = permutations[i]
             X̃all[i] = root_cause_discovery(
                 Xobs_new, Xint_sample_new, perm
@@ -274,13 +281,30 @@ function root_cause_discovery_reduced_dimensional(
         append!(second_largest, find_second_largest(X̃all))
     end
 
-    # return table (sorted by largest - 2nd largest)
     diff = largest-second_largest
     diff_normalized = diff ./ second_largest
     perm = sortperm(diff_normalized)
-    result = [largest second_largest diff diff_normalized largest_idx z[largest_idx]][perm, :]
-    result = [result [size(Xobs_new, 2) for _ in 1:size(result, 1)]] # add correct to result purely for easier visualization
-    return result
+
+    # return root cause (cholesky) score for the current variable that is treated as response
+    root_cause_score_y = 0.0
+    for per in Iterators.reverse(perm)
+        matched = size(Xobs_new, 2) == largest_idx[per]
+        if matched && z[largest_idx][per] > y_idx_z_threshold
+            root_cause_score_y = diff_normalized[per]
+            break
+        end
+    end
+    return root_cause_score_y
+
+    # old code returns a table (sorted by largest - 2nd largest)
+        # 4th col is (largest - 2nd largest) / (2nd largest)
+        # 5th col is index of the largest element
+        # 7th col is the index that is used as response in lasso regression
+        # when 5th and 7th column match, we have "found" the root cause index
+        # otherwise we didn't find the root cause index
+    # result = [largest second_largest diff diff_normalized largest_idx z[largest_idx]][perm, :]
+    # result = [result [size(Xobs_new, 2) for _ in 1:size(result, 1)]] # add correct to result purely for easier visualization
+    # return result
 end
 
 """
@@ -299,8 +323,11 @@ function root_cause_discovery_high_dimensional(
         method::String; # either "cv" or "largest_support"
         y_idx_z_threshold=1.5,
         nshuffles::Int = 1,
-        verbose = true
+        verbose = true,
+        thresholds::Union{Nothing, Vector{Float64}} = nothing,
     )
+    p = size(Xobs, 2)
+
     # compute some guesses for root cause index
     i = findfirst(x -> x == patient_id, ground_truth[!, "Patient ID"])
     Xint_sample = Xint[i, :]
@@ -308,26 +335,34 @@ function root_cause_discovery_high_dimensional(
     y_indices = compute_y_idx(z, z_threshold=y_idx_z_threshold)
     verbose && println("Trying $(length(y_indices)) y_idx")
     
-    results = Matrix{Float64}[]
-    for y_idx in y_indices
+    # run root cause algorithm on selected y
+    root_cause_scores = zeros(p)
+    Threads.@threads for y_idx in y_indices
         # run lasso, select gene subset to run root cause discovery
         Xobs_new, Xint_sample_new, _ = reduce_genes(
             patient_id, y_idx, Xobs, Xint, ground_truth, method
         )
 
         # compute current guess of root cause index
-        result = root_cause_discovery_reduced_dimensional(Xobs_new, 
-            Xint_sample_new, nshuffles=nshuffles)
-
-        push!(results, result)
+        root_cause_scores[y_idx] = root_cause_discovery_reduced_dimensional(
+            Xobs_new, Xint_sample_new, nshuffles=nshuffles, thresholds=thresholds
+        )
     end
-    
-    # 4th col is (largest - 2nd largest) / (2nd largest)
-    # 5th col is index of the largest element
-    # 7th col is the index that is used as response in lasso regression
-    # when 5th and 7th column match, we have "found" the root cause index
-    # otherwise we didn't find the root cause index
-    return results, y_indices
+
+    # assign final root cause score for variables that never had max Xtilde_i
+    idx2 = findall(iszero, root_cause_scores)
+    idx1 = findall(!iszero, root_cause_scores)
+    if length(idx2) != 0
+        if length(idx1) != 0
+            max_RC_score_idx = minimum(root_cause_scores[idx1]) - 0.00001
+            root_cause_scores[idx2] = z[idx2] ./ maximum(z[idx2]) ./ max_RC_score_idx
+        else
+            # use z scores when everything is 0
+            root_cause_scores = z
+        end
+    end
+
+    return root_cause_scores
 end
 
 """
