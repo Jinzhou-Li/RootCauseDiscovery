@@ -11,9 +11,7 @@ def B_random(p, s_B, B_value_min, B_value_max):
     B = np.zeros((p, p))
     B[lowertri_index[0][nonzero_index], lowertri_index[1][nonzero_index]] = np.random.uniform(B_value_min, B_value_max,
                                                                                               num_nonzero_entry)
-
     return B
-
 
 ################### Randomly generate lower triangular matrix B corresponds to a hub graph
 def B_hub_func(num_hub, size_up_block, size_low_block, intersect_prop, s_B, B_value_min, B_value_max):
@@ -54,15 +52,14 @@ def B_hub_func(num_hub, size_up_block, size_low_block, intersect_prop, s_B, B_va
     return B
 
 
-################ Rescale B, but keep its support, so that the variance of X is close to the given one
+################ Rescale B while keeping its support, so that the variance of X is close to the given one
 def rescale_B_func(B, var_X_design, sigma2_error, tol, step_size, max_count):
     p = B.shape[1]
     I = np.identity(p)
     assert step_size < 1, "step_size must be smaller than 1"
 
-    # Note that using [] will point to memory so the value of the input 'sigma2_error' will also change, so we generate a copy
+    # Using [] will point to memory so the value of the input 'sigma2_error' will also change, so we generate a copy
     sigma2_error_copy = sigma2_error.copy()
-
     for i in range(p):
         # if it is a source node
         if np.sum(B[i] != 0) == 0:
@@ -93,7 +90,6 @@ def rescale_B_func(B, var_X_design, sigma2_error, tol, step_size, max_count):
                 count_while += 1
                 if count_while > max_count:
                     break
-
             B = B_temp  # update B
 
     return B, sigma2_error_copy
@@ -101,7 +97,7 @@ def rescale_B_func(B, var_X_design, sigma2_error, tol, step_size, max_count):
 # Generate a random or hub DAG for simulation, with permuted variable ordering
 def generate_setting(dag_type, s_B, B_value_min, B_value_max, err_min, err_max, var_X_min, var_X_max,
                      p=0, num_hub=0, size_up_block=0, size_low_block=0, intersect_prop=0,
-                     tol=10, step_size=0.5, max_count=100):
+                     tol=10, step_size=0.2, max_count=100):
     if dag_type == "random":
         if p == 0:
             raise ValueError("p is needed for random dag")
@@ -117,7 +113,7 @@ def generate_setting(dag_type, s_B, B_value_min, B_value_max, err_min, err_max, 
     B_scaled, sigma2_error_new = rescale_B_func(B_unscaled, var_X_design, sigma2_error_raw, tol=tol, step_size=step_size,
                                                 max_count=max_count)
 
-    # # check that we indeed make the variance of X similar to the preset one
+    # # check that the variance of X is indeed close to the preset one
     I = np.identity(p)
     var_X_new = np.diag(np.dot(linalg.solve(I - B_scaled, np.diag(sigma2_error_new)), linalg.inv(I - B_scaled).T))
     max_diff = np.max(np.abs(var_X_new - var_X_design))
@@ -150,7 +146,6 @@ def generate_data(n, m, p, B, sigma2_error, b, int_mean, int_sd):
         X_int[i, :] = linalg.solve(I - B, (b + error + delta).T).reshape(p)
 
     return X_obs, X_int, RC
-
 
 def generate_data_latent(n, m, p, latent_proportion, B, sigma2_error, b, int_mean, int_sd):
     # randomly sample some variables as latent

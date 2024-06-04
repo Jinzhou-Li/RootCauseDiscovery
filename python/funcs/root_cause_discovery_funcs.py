@@ -7,9 +7,9 @@ from sklearn.covariance import ShrunkCovariance
 from joblib import Parallel, delayed
 from tqdm import tqdm
 
-# generate threhsolds to determine abberant set.
-# refined to reduce repeated permutations
-def get_abberant_thresholds(z_vec, thre_min=0.1, thre_max=5, thre_seq=0.2):
+
+# generate thresholds to determine aberrant set, make sure no repeated permutations later.
+def get_aberrant_thresholds(z_vec, thre_min=0.1, thre_max=5, thre_seq=0.2):
     thresholds_raw = np.arange(thre_min, thre_max, thre_seq)
     thre_new = list()
     count_temp = 0
@@ -21,6 +21,7 @@ def get_abberant_thresholds(z_vec, thre_min=0.1, thre_max=5, thre_seq=0.2):
     thre_new = np.array(thre_new)
     return thre_new
 
+
 # `X_obs` and `X_int` are matrices
 def zscore(X_obs, X_int):
     if X_int.ndim == 1:
@@ -29,15 +30,16 @@ def zscore(X_obs, X_int):
     assert X_obs.shape[1] == p, "Both inputs should have same number of variables"
     # observational data's mean and std
     mu = np.mean(X_obs, axis=0)
-    sigma = np.std(X_obs, axis=0, ddof=1) # sample std
+    sigma = np.std(X_obs, axis=0, ddof=1)  # sample std
     # compute squared Z scores for each patient in interventional data
     zscore_intv = np.zeros((n, p))
     for i in range(n):
-        zs = [(abs((X_int[i, j] - mu[j]) / sigma[j]))**2 for j in range(p)]
-        zscore_intv[i,:] = zs
+        zs = [(abs((X_int[i, j] - mu[j]) / sigma[j])) ** 2 for j in range(p)]
+        zscore_intv[i, :] = zs
     return zscore_intv
 
-# `X_obs` is matrix, `X_int` is vector
+
+# `X_obs` is matrix, `X_int` is a vector
 def zscore_vec(X_obs, X_int):
     ngenes = len(X_int)
     assert X_obs.shape[1] == ngenes, "Number of genes mismatch"
@@ -45,11 +47,12 @@ def zscore_vec(X_obs, X_int):
     mu = np.mean(X_obs, axis=0)
     sigma = np.std(X_obs, axis=0, ddof=1)
     # compute squared Z scores for each patient in interventional data
-    zs = np.array([(abs((X_int[i] - mu[i]) / sigma[i]))**2 for i in range(ngenes)])
+    zs = np.array([(abs((X_int[i] - mu[i]) / sigma[i])) ** 2 for i in range(ngenes)])
     return zs
 
+
 # `z` is a vector
-def compute_permutations(z, threshold=2, nshuffles=1):
+def compute_permutations(z, threshold=1.5, nshuffles=5):
     # subset of variables indices that are abberent
     idx_abberent = [i for i, x in enumerate(z) if x > threshold]
     idx_abberent_copy = idx_abberent.copy()
@@ -71,7 +74,7 @@ def compute_permutations(z, threshold=2, nshuffles=1):
 # Basic root cause discovery function with 'perm' as an input
 # `X_obs` is a matrix, `X_int` a vector, `perm` a permutation vector
 def root_cause_discovery(X_obs, X_int, perm):
-    if isinstance(perm, np.ndarray)==False:
+    if not isinstance(perm, np.ndarray):
         perm = np.array(perm)
     n, p = X_obs.shape
     assert p == len(X_int), "dimensions mismatch!"
@@ -84,11 +87,11 @@ def root_cause_discovery(X_obs, X_int, perm):
     if n > p:
         sigma = np.cov(X_obs_perm.transpose())
     else:
-        # maybe try other choices?
+        # it is possible to use other estimators here
         cov = ShrunkCovariance().fit(X_obs_perm)
         sigma = cov.covariance_
-        # raise Exception("covariance shrinkage not implemented")
-    # ad-hoc way to ensure PSD
+
+    # ensure positive-definite
     min_eigenvalue = min(LA.eigvals(sigma))
     if min_eigenvalue < 1e-6:
         sigma = sigma + abs(min_eigenvalue) + 1e-6
@@ -100,19 +103,19 @@ def root_cause_discovery(X_obs, X_int, perm):
     X_tilde = X_tilde[perm.argsort()]
     return abs(X_tilde)
 
-# main root cause discovery function (Algo 3 in the paper)
+
+# Main root cause discovery function (Algo 3 in the paper)
 def root_cause_discovery_main(X_obs, X_int, thresholds=None, nshuffles=1, verbose=True):
     p = X_obs.shape[1]
-    assert p == len(X_int), "Number of genes mismatch"
+    assert p == len(X_int), "Number of variables mismatch"
     # compute z scores
     z = zscore(X_obs, X_int)
 
-    if thresholds==None:
-        thresholds = get_abberant_thresholds(z, thre_min=0.1, thre_max=5, thre_seq=0.2)
+    if thresholds is None:
+        thresholds = get_aberrant_thresholds(z, thre_min=0.1, thre_max=5, thre_seq=0.2)
 
     root_cause_score = np.zeros(p)
     for threshold in thresholds:
-        # compute permutations to try: can be optimized, there might be repeated permutations. But should be ok due to shuffle, so its like more shuffles
         permutations = compute_permutations(z, threshold=threshold, nshuffles=nshuffles)
         if verbose:
             print("Trying", len(permutations), "permutations for threshold", threshold)
@@ -152,7 +155,7 @@ def reduce_dimension(y_idx, X_obs, X_int, method, verbose=True):
             warnings.simplefilter("ignore")
             lasso_cv = LassoCV().fit(X, y)
             beta_final = lasso_cv.coef_
-            if np.sum(beta_final != 0) == 0: # in this case return n/2 variables
+            if np.sum(beta_final != 0) == 0:  # in this case return n/2 variables
                 _, coef_path, _ = lasso_path(X, y)
                 num_nonzeros = np.sum((coef_path != 0), axis=0)
                 alpha_idx = np.argmin(np.abs(num_nonzeros - n / 2))
@@ -183,84 +186,16 @@ def reduce_dimension(y_idx, X_obs, X_int, method, verbose=True):
     # return
     return X_obs_new, X_int_sample_new, selected_idx
 
-# def root_cause_discovery_high_dimensional(
-#         X_obs,
-#         X_int,
-#         method,
-#         y_idx_z_threshold=1.5,
-#         nshuffles=1,
-#         verbose=True,
-#         Precision_mat=None):
-#     n, p = X_obs.shape
-#     z = zscore(X_obs, X_int)
-#     y_indices = np.where(z > y_idx_z_threshold)[0]
-#
-#     # computationally expensive!
-#     root_cause_score = np.zeros(p)
-#     select_len = np.zeros(p)
-#     for y_idx in y_indices:
-#         if Precision_mat is None:
-#             X_obs_new, X_int_sample_new, selected_idx = reduce_dimension(y_idx, X_obs, X_int, method, verbose)
-#             select_len[y_idx] = len(selected_idx)
-#         else:
-#             MB = np.where(Precision_mat[:, y_idx] != 0)[0]
-#             MB = np.delete(MB, np.where(MB == y_idx)[0][0])
-#             MB = np.append(MB, y_idx)  # put y_idx in the end
-#             X_obs_new = X_obs[:, MB]
-#             X_int_sample_new = X_int[MB]
-#             select_len[y_idx] = len(MB)
-#
-#         z_new = zscore(X_obs_new, X_int_sample_new)
-#
-#         thresholds = get_abberant_thresholds(z_new, thre_min=0.1, thre_max=5, thre_seq=0.2)
-#
-#         best_Xtilde = 0
-#         best_OneNonZero_quantification = 0
-#         for threshold in thresholds:
-#             # compute permutations to try
-#             permutations = compute_permutations(z_new, threshold=threshold, nshuffles=nshuffles)
-#             if verbose:
-#                 print("Trying", len(permutations), "permutations for threshold", threshold)
-#
-#             # try all permutations to calculate 'Xtilde' and update root_cause_score
-#             for perm in permutations:
-#                 Xtilde = root_cause_discovery(X_obs_new, X_int_sample_new, perm)
-#                 sorted_X = sorted(Xtilde)
-#                 OneNonZero_quantification = (sorted_X[-1] - sorted_X[-2]) / sorted_X[-2]
-#
-#                 if z_new[np.argmax(
-#                         Xtilde)] > y_idx_z_threshold and OneNonZero_quantification > best_OneNonZero_quantification:
-#                     best_Xtilde = Xtilde
-#                     best_OneNonZero_quantification = OneNonZero_quantification
-#
-#         if not isinstance(best_Xtilde, int):
-#             if max(best_Xtilde) == best_Xtilde[-1]: # if match y_idx
-#                 root_cause_score[y_idx] = best_OneNonZero_quantification
-#
-#     # assign final root cause score for variables that never had maximal Xtilde_i
-#     idx2 = np.where(root_cause_score == 0)[0]
-#     idx1 = np.where(root_cause_score != 0)[0]
-#     if len(idx2) != 0:
-#         if len(idx1) != 0:
-#             max_RC_score_idx2 = np.min(root_cause_score[idx1]) - 0.0001
-#             root_cause_score[idx2] = z[idx2] / (np.max(z[idx2]) / max_RC_score_idx2)
-#         else:
-#             root_cause_score = z
-#
-#     # return len(selected_idx) to check whether the bad performance is due to estimation of L
-#     return root_cause_score, select_len
 
-# parallel version of the above function, in case 'cv-lasso' too time consuming
 # Function to parallel
 def process_y_idx_rcd(
-    y_idx,
-    X_obs,
-    X_int,
-    method,
-    y_idx_z_threshold=1.5,
-    nshuffles=1,
-    verbose=True,
-    Precision_mat=None):
+        y_idx,
+        X_obs,
+        X_int,
+        method,
+        nshuffles=1,
+        verbose=True,
+        Precision_mat=None):
     if Precision_mat is None:
         X_obs_new, X_int_sample_new, selected_idx = reduce_dimension(y_idx, X_obs, X_int, method, verbose)
         select_len_y = len(selected_idx)
@@ -274,24 +209,22 @@ def process_y_idx_rcd(
 
     z_new = zscore(X_obs_new, X_int_sample_new)
 
-    thresholds = get_abberant_thresholds(z_new, thre_min=0.1, thre_max=5, thre_seq=0.2)
+    thresholds = get_aberrant_thresholds(z_new, thre_min=0.1, thre_max=5, thre_seq=0.2)
 
     best_Xtilde = 0
     best_OneNonZero_quantification = 0
     for threshold in thresholds:
-        # compute permutations to try
         permutations = compute_permutations(z_new, threshold=threshold, nshuffles=nshuffles)
         if verbose:
             print("Trying", len(permutations), "permutations for threshold", threshold)
 
-        # try all permutations to calculate 'Xtilde' and update root_cause_score
+        # try all permutations to calculate 'Xtilde' and update 'best_OneNonZero_quantification'
         for perm in permutations:
             Xtilde = root_cause_discovery(X_obs_new, X_int_sample_new, perm)
             sorted_X = sorted(Xtilde)
             OneNonZero_quantification = (sorted_X[-1] - sorted_X[-2]) / sorted_X[-2]
 
-            if z_new[np.argmax(
-                    Xtilde)] > y_idx_z_threshold and OneNonZero_quantification > best_OneNonZero_quantification:
+            if OneNonZero_quantification > best_OneNonZero_quantification:
                 best_Xtilde = Xtilde
                 best_OneNonZero_quantification = OneNonZero_quantification
 
@@ -302,7 +235,8 @@ def process_y_idx_rcd(
 
     return y_idx, root_cause_score_y, select_len_y
 
-def root_cause_discovery_highsim_parallel(
+
+def root_cause_discovery_highdim_parallel(
         X_obs,
         X_int,
         method,
@@ -316,8 +250,8 @@ def root_cause_discovery_highsim_parallel(
     y_indices = np.where(z > y_idx_z_threshold)[0]
 
     # Parallelize the processing of y_indices
-    results = Parallel(n_jobs=n_jobs)(delayed(process_y_idx_rcd)(y_idx, X_obs, X_int, method, y_idx_z_threshold,
-                                                                 nshuffles, verbose, Precision_mat) for y_idx in y_indices)
+    results = Parallel(n_jobs=n_jobs)(delayed(process_y_idx_rcd)(y_idx, X_obs, X_int, method,  nshuffles,
+                                                                 verbose, Precision_mat) for y_idx in y_indices)
     root_cause_score = np.zeros(p)
     select_len = np.zeros(p)
     for y_idx, score, length in results:
@@ -334,5 +268,4 @@ def root_cause_discovery_highsim_parallel(
         else:
             root_cause_score = z
 
-    # return len(selected_idx) to check whether the bad performance is due to estimation of L
     return root_cause_score, select_len
