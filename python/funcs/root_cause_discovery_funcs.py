@@ -105,7 +105,7 @@ def root_cause_discovery(X_obs, X_int, perm):
 
 
 # Main root cause discovery function (Algo 3 in the paper)
-def root_cause_discovery_main(X_obs, X_int, thresholds=None, nshuffles=1, verbose=True):
+def root_cause_discovery_main(X_obs, X_int, nshuffles=1, thresholds=None, verbose=True):
     p = X_obs.shape[1]
     assert p == len(X_int), "Number of variables mismatch"
     # compute z scores
@@ -139,36 +139,23 @@ def root_cause_discovery_main(X_obs, X_int, thresholds=None, nshuffles=1, verbos
 
 
 # this is same function as 'reduce_gene'
-def reduce_dimension(y_idx, X_obs, X_int, method, verbose=True):
+def reduce_dimension(y_idx, X_obs, X_int, verbose=True):
     # response and design matrix for Lasso
     y = X_obs[:, y_idx]
     X = np.delete(X_obs, y_idx, axis=1)
     n = len(y)
-    # fit lasso
-    if method == "ls":  # "largest_support", maybe delete, not that reasonable...
-        with warnings.catch_warnings():  # ignore the convergence warnings from 'enet_path'
-            warnings.simplefilter("ignore")
-            _, coef_path, _ = lasso_path(X, y)
-            beta_final = coef_path[:, -1]
-    if method == "cv":
-        with warnings.catch_warnings():  # ignore the convergence warnings from 'enet_path'
-            warnings.simplefilter("ignore")
-            lasso_cv = LassoCV().fit(X, y)
-            beta_final = lasso_cv.coef_
-            if np.sum(beta_final != 0) == 0:  # in this case return n/2 variables
-                _, coef_path, _ = lasso_path(X, y)
-                num_nonzeros = np.sum((coef_path != 0), axis=0)
-                alpha_idx = np.argmin(np.abs(num_nonzeros - n / 2))
-                beta_final = coef_path[:, alpha_idx]
-    if method == "halfn":
-        with warnings.catch_warnings():  # ignore the convergence warnings from 'enet_path'
-            warnings.simplefilter("ignore")
+
+    # fit CV-lasso
+    with warnings.catch_warnings():  # ignore the convergence warnings from 'enet_path'
+        warnings.simplefilter("ignore")
+        lasso_cv = LassoCV().fit(X, y)
+        beta_final = lasso_cv.coef_
+        if np.sum(beta_final != 0) == 0:  # in this case return n/2 variables
             _, coef_path, _ = lasso_path(X, y)
             num_nonzeros = np.sum((coef_path != 0), axis=0)
             alpha_idx = np.argmin(np.abs(num_nonzeros - n / 2))
             beta_final = coef_path[:, alpha_idx]
-    if method not in ["ls", "cv", "halfn"]:
-        raise ValueError("method should be `cv` or `ls` or `halfn`")
+
     nz = np.count_nonzero(beta_final)
     if verbose:
         print("Treat", y_idx, "as response, found ", nz, " non-zero entries")
@@ -192,12 +179,11 @@ def process_y_idx_rcd(
         y_idx,
         X_obs,
         X_int,
-        method,
         nshuffles=1,
         verbose=True,
         Precision_mat=None):
     if Precision_mat is None:
-        X_obs_new, X_int_sample_new, selected_idx = reduce_dimension(y_idx, X_obs, X_int, method, verbose)
+        X_obs_new, X_int_sample_new, selected_idx = reduce_dimension(y_idx, X_obs, X_int, verbose)
         select_len_y = len(selected_idx)
     else:
         MB = np.where(Precision_mat[:, y_idx] != 0)[0]
@@ -239,7 +225,6 @@ def process_y_idx_rcd(
 def root_cause_discovery_highdim_parallel(
         X_obs,
         X_int,
-        method,
         n_jobs,
         y_idx_z_threshold=1.5,
         nshuffles=1,
@@ -250,7 +235,7 @@ def root_cause_discovery_highdim_parallel(
     y_indices = np.where(z > y_idx_z_threshold)[0]
 
     # Parallelize the processing of y_indices
-    results = Parallel(n_jobs=n_jobs)(delayed(process_y_idx_rcd)(y_idx, X_obs, X_int, method,  nshuffles,
+    results = Parallel(n_jobs=n_jobs)(delayed(process_y_idx_rcd)(y_idx, X_obs, X_int, nshuffles,
                                                                  verbose, Precision_mat) for y_idx in y_indices)
     root_cause_score = np.zeros(p)
     select_len = np.zeros(p)
