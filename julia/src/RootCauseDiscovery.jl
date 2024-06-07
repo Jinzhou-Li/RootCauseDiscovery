@@ -22,7 +22,7 @@ export download_data,
 include("get_data.jl")
 include("utilities.jl")
 
-datadir(parts...) = joinpath(@__DIR__, "../..", "data", parts...)
+datadir(parts...) = joinpath(@__DIR__, "..", "data", parts...)
 
 function check_data_exist()
     files = readdir(RootCauseDiscovery.datadir())

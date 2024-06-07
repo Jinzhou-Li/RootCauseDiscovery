@@ -2,6 +2,11 @@ data/fib_ns--hg19--gencode34
 data/fib_ss--hg19--gencode34
 data/*.tar.gz
 data/*.xlsx
+julia/data/fib_ns--hg19--gencode34
+julia/data/fib_ss--hg19--gencode34
+julia/data/*.tar.gz
+julia/data/*.xlsx
+
 .idea*
 
 .DS_Store
