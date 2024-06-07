@@ -2,6 +2,10 @@
 
 For exact codes used to download and preprocess these data, see codes in file `https://github.com/biona001/RootCauseDiscovery.jl/blob/main/julia/src/get_data.jl`.
 
+## Real data analysis 
+
+For real data analysis, we used julia code located at `https://github.com/biona001/RootCauseDiscovery.jl/julia`. To reproduce the results, see the notebooks located at `https://github.com/biona001/RootCauseDiscovery.jl/julia/notebooks`. 
+
 ## Ground truth data
 
 This repo contains 2 files needed for our real data analysis:
