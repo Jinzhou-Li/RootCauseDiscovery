@@ -9,4 +9,6 @@ julia/data/*.xlsx
 
 .idea*
 
+python/.ipynb_checkpoints*
+
 .DS_Store

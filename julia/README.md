@@ -1,7 +1,9 @@
-# RootCauseDiscovery.jl
+# Julia package for RootCauseDiscovery
 
 To use this package, download [Julia](https://julialang.org/downloads/). Within Julia, install the package via
 ```
 using Pkg
-Pkg.add(PackageSpec(url="https://github.com/biona001/RootCauseDiscovery.jl.git", subdir="julia"))
+Pkg.add(PackageSpec(url="https://github.com/biona001/RootCauseDiscovery.git", subdir="julia"))
 ```
+
+We used this package for our real data analysis due to Julia's computational efficiency.
