@@ -135,7 +135,7 @@ end
     QC_gene_expression_data(;low_count=10, threshold=0.2)
 
 keeps rows (i.e. genes) if there is at least `threshold` 
-number of columns with values greater than `low_count, and then 
+number of columns with values greater than `low_count`, and then 
 normalize gene count file. 
 
 # Normalizing gene counts file
