@@ -59,7 +59,7 @@ the Cholesky method.
 # Optional inputs
 + `threshold`: z-score threshold used for finding the abberent set (smaller
     means more permutations)
-+ `nshuffles`: how many permutations to try for each "middle guy"
++ `nshuffles`: how many permutations to try for a fixed "middle variable"
 """
 function compute_permutations(
         z::AbstractVector{T}; 
@@ -88,11 +88,13 @@ function compute_permutations(
     return perms
 end
 
-# note: Xobs is n by p (i.e. p genes, must transpose Xobs and Xint prior to input)
 """
     root_cause_discovery(Xobs, Xint, perm)
 
 Given one permutation, run main algorithm for root cause discovery.
+
+# Note
+`Xobs` is n by p (i.e. p genes, must transpose Xobs and Xint prior to input)
 """
 function root_cause_discovery(
         Xobs::AbstractMatrix{T}, 
@@ -163,6 +165,8 @@ end
 
 Assuming root cause gene for patient `patient_id` is unknown, we run Lasso on the each gene, 
 pretending it is the root-cause-gene (to select a subset of genes from Xobs)
+
+Todo: decide whether to delete "largest_support" option
 """
 function reduce_genes(
         patient_id, 
@@ -294,16 +298,6 @@ function root_cause_discovery_reduced_dimensional(
         end
     end
     return root_cause_score_y
-
-    # old code returns a table (sorted by largest - 2nd largest)
-        # 4th col is (largest - 2nd largest) / (2nd largest)
-        # 5th col is index of the largest element
-        # 7th col is the index that is used as response in lasso regression
-        # when 5th and 7th column match, we have "found" the root cause index
-        # otherwise we didn't find the root cause index
-    # result = [largest second_largest diff diff_normalized largest_idx z[largest_idx]][perm, :]
-    # result = [result [size(Xobs_new, 2) for _ in 1:size(result, 1)]] # add correct to result purely for easier visualization
-    # return result
 end
 
 """
@@ -373,77 +367,3 @@ root-cause-discovery algorirthm
 function compute_y_idx(z::AbstractVector{Float64}; z_threshold=1.5)
     return findall(x -> x > z_threshold, z)
 end
-
-# """
-# This function is specific for our real-data application (`ground_truth`
-# is based on real data). 
-
-# Given a patient, we compute its Z-score rank, and then try to refine
-# its rank via the RCD method. Note: if the root cause was not used as
-# the response in lasso regression, its refined rank will be `Inf`
-# """
-# function refine_z_score_rank(
-#         patient_id::AbstractString,
-#         ground_truth::DataFrame,
-#         Xobs::AbstractMatrix,
-#         Xint::AbstractMatrix,
-#         lasso_method::String; #cv or largest_support
-#         max_acceptable_zscore = 1.5,
-#     )
-#     jld2_file = "/scratch/users/bbchu/RootCauseDiscovery/result_3.25.2024/$(lasso_method)/$(patient_id).jld2"
-#     results = JLD2.load(jld2_file, "results")
-#     y_indices = JLD2.load(jld2_file, "y_indices")
-
-#     # compute z scores
-#     Xint_sample = Xint[findfirst(x -> x == patient_id, ground_truth[!, "Patient ID"]), :]
-#     z = RootCauseDiscovery.zscore(Xobs, Xint_sample') |> vec
-
-#     # compute root cause index
-#     root_cause_idx = ground_truth[findfirst(x -> x == patient_id, ground_truth[!, "Patient ID"]), end]
-#     if root_cause_idx ∉ y_indices
-#         println("The root cause was not chosen as a y for lasso")
-#         return Inf # return Inf when the root cause idx was not chosen as a y for lasso
-#     end
-
-#     # other needed quantities
-#     root_cause_zscore = z[root_cause_idx]
-#     row_of_rootcause_in_result = findfirst(x -> x == root_cause_idx, y_indices)
-
-#     # for each gene w/ z score > 1.5, check its permutation table
-#     # to see if desired pattern exist
-#     matched = falses(length(results)) # length(matched) == length(results) == length(y_indices) 
-#     for (i, result) in enumerate(results)
-#         row = findlast(x -> x > max_acceptable_zscore, result[:, 6])
-#         if !isnothing(row)
-#             if result[row, 5] == result[row, 7]
-#                 matched[i] = true
-#             end
-#         end
-#     end
-
-#     # calculate the refined rank for root cause
-#     root_cause_matched = matched[row_of_rootcause_in_result]
-#     if root_cause_matched
-#         # for all matching patterns, count how many have z scores
-#         # larger than the root cause
-#         counter = 0
-#         for (i, yi) in enumerate(y_indices)
-#             if (matched[i] == true) && (z[yi] > root_cause_zscore)
-#                 counter += 1
-#             end
-#         end
-#         rk = counter
-#     else
-#         # if root cause index did not have desired matching pattern,
-#         # then if there's a matched variable, or the variable has larger Z score,
-#         # the variable will be ranked before the root cause
-#         counter = 0
-#         for (i, yi) in enumerate(y_indices)
-#             if (matched[i] == true) || (z[yi] > root_cause_zscore)
-#                 counter += 1
-#             end
-#         end
-#         rk = counter
-#     end
-#     return rk
-# end
