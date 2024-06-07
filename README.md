@@ -3,7 +3,7 @@
 To use this package, download [Julia](https://julialang.org/downloads/). Within Julia, install the package via
 ```
 using Pkg
-Pkg.develop(url="https://github.com/biona001/RootCauseDiscovery.jl")
+Pkg.add(PackageSpec(url="https://github.com/biona001/RootCauseDiscovery.jl.git", subdir="julia"))
 ```
 
 ## Obtain QC'd gene expression data
