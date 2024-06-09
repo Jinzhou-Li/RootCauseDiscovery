@@ -188,7 +188,7 @@ function reduce_genes(
         cv = glmnetcv(X, y)
         beta_final = GLMNet.coef(cv)
         if count(!iszero, beta_final) == 0
-            return reduce_genes(patient_id, y_idx, Xobs, Xint, group_truth, "nhalf")
+            return reduce_genes(patient_id, y_idx, Xobs, Xint, ground_truth, "nhalf")
         end
     elseif method == "largest_support"
         path = glmnet(X, y)
