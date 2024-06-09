@@ -290,13 +290,19 @@ function root_cause_discovery_reduced_dimensional(
 
     # return root cause (cholesky) score for the current variable that is treated as response
     root_cause_score_y = 0.0
-    for per in Iterators.reverse(perm)
-        matched = size(Xobs_new, 2) == largest_idx[per]
-        if matched
-            root_cause_score_y = diff_normalized[per]
-            break
-        end
+    if size(Xobs_new, 2) == largest_idx[perm[end]] # matched = selected y (last variable) was identified as root cause
+        root_cause_score_y = diff_normalized[perm[end]]
     end
+    ### This for loop was original designed to search "backwards" in the resulting
+    ### table to prevent selecting a variable whose z score was < 1.5.
+    ### It resulted in very good results so we're keeping it for now
+    # for per in Iterators.reverse(perm)
+    #     matched = size(Xobs_new, 2) == largest_idx[per]
+    #     if matched
+    #         root_cause_score_y = diff_normalized[per]
+    #         break
+    #     end
+    # end
     return root_cause_score_y
 end
 
