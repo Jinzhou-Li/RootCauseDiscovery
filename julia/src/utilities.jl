@@ -98,7 +98,7 @@ end
 """
     root_cause_discovery(Xobs, Xint, perm)
 
-Given one permutation, run main algorithm for root cause discovery.
+Given one permutation, run our main algorithm for root cause discovery.
 
 # Note
 `Xobs` is n by p (i.e. p genes, must transpose Xobs and Xint prior to input)
@@ -120,8 +120,6 @@ function root_cause_discovery(
     μ̂ = mean(Xobs_perm, dims=1) |> vec
     if n > p
         Σ̂ = cov(Xobs_perm)
-#         Σ̂ = cov(LinearShrinkage(CommonCovariance(), :ss), Xobs_perm)
-#         Σ̂ = cov(LinearShrinkage(DiagonalUnequalVariance(), :ss), Xobs_perm)
     else
         Σ̂ = cov(LinearShrinkage(DiagonalUnequalVariance(), :lw), Xobs_perm)
     end
@@ -133,7 +131,7 @@ function root_cause_discovery(
             Σ̂[i, i] += abs(min_eval) + 1e-6
         end
     end
-    
+
     # compute cholesky
     L = cholesky(Σ̂)
 
@@ -170,10 +168,11 @@ end
 """
     reduce_genes(patient_id, y_idx, Xobs, Xint, ground_truth, method)
 
-Assuming root cause gene for patient `patient_id` is unknown, we run Lasso on the each gene, 
-pretending it is the root-cause-gene (to select a subset of genes from Xobs)
+Treat each gene as the response and run CVLasso to select a subset of genes 
+(estimated Markov blanket). Return new datasets with only these genes. The
+gene used as response is returned as the last element of `selected_idx`
 
-Todo: decide whether to delete "largest_support" option
+Later we will use the returned data to run our algorithm. 
 """
 function reduce_genes(
         patient_id, 
@@ -181,7 +180,8 @@ function reduce_genes(
         Xobs::AbstractMatrix{Float64}, 
         Xint::AbstractMatrix{Float64},
         ground_truth::DataFrame, # this is only used to access sample ID in Xint
-        method::String, # either "cv" or "largest_support"
+        method::String = "cv", # either "cv" or "nhalf"
+        verbose::Bool = true
     )
     n, p = size(Xobs)
 
@@ -194,12 +194,9 @@ function reduce_genes(
     if method == "cv"
         cv = glmnetcv(X, y)
         beta_final = GLMNet.coef(cv)
-        if count(!iszero, beta_final) <= 1
+        if count(!iszero, beta_final) <= 1 # we need at least two variables for our method
             return reduce_genes(patient_id, y_idx, Xobs, Xint, ground_truth, "nhalf")
         end
-    elseif method == "largest_support"
-        path = glmnet(X, y)
-        beta_final = path.betas[:, end]
     elseif method == "nhalf" # ad-hoc method to choose ~n/2 number of non-zero betas
         path = glmnet(X, y)
         beta_final = path.betas[:, 1]
@@ -213,18 +210,18 @@ function reduce_genes(
         end
         beta_final = Vector(beta_final)
     else
-        error("method should be `cv`, `largest_support`, or `nhalf`")
+        error("method should be `cv` or `nhalf`")
     end
     nz = count(!iszero, beta_final)
-    println("Lasso found $nz non-zero entries")
+    verbose && println("Lasso found $nz non-zero entries")
 
-    # for non-zero idx, find the original indices in Xobs, and don't forget to include y_idx
-    # back to the set of selected variables
+    # for non-zero idx, find the original indices in Xobs
+    # and include y_idx back to the set of selected variables
     selected_idx = findall(!iszero, beta_final)
     selected_idx[findall(x -> x ≥ y_idx, selected_idx)] .+= 1
     append!(selected_idx, y_idx)
 
-    # return the subset of variables of Xobs that were selected
+    # return data containing the subset of selected variables
     Xobs_new = Xobs[:, selected_idx]
     i = findfirst(x -> x == patient_id, ground_truth[!, "Patient ID"])
     Xint_sample_new = Xint[i, selected_idx]
@@ -262,6 +259,12 @@ function get_abberant_thresholds(
     return threshold_new
 end
 
+"""
+    root_cause_discovery_reduced_dimensional(Xobs_new, Xint_sample_new, [nshuffles], [thresholds])
+
+Run the root cause discovery algorithm on data with reduced dimension.
+Update the Cholesky score for the variable treated as response
+"""
 function root_cause_discovery_reduced_dimensional(
         Xobs_new::AbstractMatrix{Float64}, 
         Xint_sample_new::AbstractVector{Float64};
@@ -313,17 +316,17 @@ end
 """
     root_cause_discovery_high_dimensional
 
-High level wrapper for Root cause discovery, for p>n data. 
-First guess many root causes, then runs lasso, then run root cause discovery algorithm.
-
-Still need a way to check if guesses are "root causes"
+The main root cause discovery for high-dimensional data.
+This includes treating each variable as response, 
+applying Laaso to reduce dimension, 
+and running our root cause discovery algorithm.
 """
 function root_cause_discovery_high_dimensional(
         patient_id::String,
         Xobs::AbstractMatrix{Float64}, 
         Xint::AbstractMatrix{Float64},
         ground_truth::DataFrame, # this is only used to access sample ID in Xint
-        method::String; # either "cv" or "largest_support"
+        method::String = "cv"; # either "cv" or "nhalf"
         y_idx_z_threshold=1.5,
         nshuffles::Int = 1,
         verbose = true,
@@ -331,28 +334,28 @@ function root_cause_discovery_high_dimensional(
     )
     p = size(Xobs, 2)
 
-    # compute some guesses for root cause index
+    # To save computational time, we only treat variables that are abberant as
+    # response (have large enough z-score)
     i = findfirst(x -> x == patient_id, ground_truth[!, "Patient ID"])
     Xint_sample = Xint[i, :]
     z = zscore(Xobs, Xint_sample') |> vec
     y_indices = compute_y_idx(z, z_threshold=y_idx_z_threshold)
     verbose && println("Trying $(length(y_indices)) y_idx")
     
-    # run root cause algorithm on selected y
+    # parallel
     root_cause_scores = zeros(p)
     Threads.@threads for y_idx in y_indices
         # run lasso, select gene subset to run root cause discovery
         Xobs_new, Xint_sample_new, _ = reduce_genes(
-            patient_id, y_idx, Xobs, Xint, ground_truth, method
+            patient_id, y_idx, Xobs, Xint, ground_truth, method, verbose
         )
-
-        # compute current guess of root cause index
+        # run our root cause discovery algorithm on reduced data
         root_cause_scores[y_idx] = root_cause_discovery_reduced_dimensional(
             Xobs_new, Xint_sample_new, nshuffles=nshuffles, thresholds=thresholds
         )
     end
 
-    # assign final root cause score for variables that never had max Xtilde_i
+    # assign root cause score for variables whose current score are 0
     idx2 = findall(iszero, root_cause_scores)
     idx1 = findall(!iszero, root_cause_scores)
     if length(idx2) != 0
@@ -360,7 +363,7 @@ function root_cause_discovery_high_dimensional(
             max_RC_score_idx = minimum(root_cause_scores[idx1]) - 0.00001
             root_cause_scores[idx2] .= z[idx2] ./ (maximum(z[idx2]) ./ max_RC_score_idx)
         else
-            # use z scores when everything is 0
+            # use z scores when all scores are 0
             root_cause_scores = z
         end
     end
@@ -371,8 +374,8 @@ end
 """
     compute_y_idx(z::AbstractVector{Float64})
 
-Given some Z scores, compute a set of variables that will be treated as "root causes", and enter the 
-root-cause-discovery algorirthm
+Given Z scores, compute a set of abberant variables whose z-score are larger than some threshold.
+These variables will be treated as response in function 'root_cause_discovery_high_dimensional'
 """
 function compute_y_idx(z::AbstractVector{Float64}; z_threshold=1.5)
     return findall(x -> x > z_threshold, z)
