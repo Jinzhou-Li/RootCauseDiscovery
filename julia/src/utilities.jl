@@ -75,14 +75,21 @@ function compute_permutations(
 
     # one way of generating length(idx1) permutations, fixing idx2
     perms = Vector{Int}[]
-    for i in eachindex(idx1)
+    if length(idx1) == 0 # all z score are below threshold
         for _ in 1:nshuffles
             shuffle!(idx2)
-            shuffle!(idx1)
-            target = idx1_copy[i]
-            index = findfirst(x -> x == target, idx1)
-            idx1[1], idx1[index] = target, idx1[1]
-            push!(perms, vcat(idx2, idx1))
+            push!(perms, copy(idx2))
+        end
+    else
+        for i in eachindex(idx1)
+            for _ in 1:nshuffles
+                shuffle!(idx2)
+                shuffle!(idx1)
+                target = idx1_copy[i]
+                index = findfirst(x -> x == target, idx1)
+                idx1[1], idx1[index] = target, idx1[1]
+                push!(perms, vcat(idx2, idx1))
+            end
         end
     end
     return perms
@@ -187,7 +194,7 @@ function reduce_genes(
     if method == "cv"
         cv = glmnetcv(X, y)
         beta_final = GLMNet.coef(cv)
-        if count(!iszero, beta_final) == 0
+        if count(!iszero, beta_final) <= 1
             return reduce_genes(patient_id, y_idx, Xobs, Xint, ground_truth, "nhalf")
         end
     elseif method == "largest_support"
@@ -239,7 +246,7 @@ function get_abberant_thresholds(
         threshold_seq=0.2
     ) where T
     threshold_raw = collect(threshold_min:threshold_seq:threshold_max)
-    count_temp = 0
+    count_temp = -1
     threshold_new = T[]
     for threshold in threshold_raw
         if count(x -> x >= threshold, z_vec) > 0
@@ -248,6 +255,9 @@ function get_abberant_thresholds(
                 push!(threshold_new, threshold)
             end
         end
+    end
+    if length(threshold_new) == 0
+        threshold_new = [threshold_min]
     end
     return threshold_new
 end
@@ -290,19 +300,13 @@ function root_cause_discovery_reduced_dimensional(
 
     # return root cause (cholesky) score for the current variable that is treated as response
     root_cause_score_y = 0.0
-    if size(Xobs_new, 2) == largest_idx[perm[end]] # matched = selected y (last variable) was identified as root cause
-        root_cause_score_y = diff_normalized[perm[end]]
+    for per in Iterators.reverse(perm)
+        matched = size(Xobs_new, 2) == largest_idx[per]
+        if matched
+            root_cause_score_y = diff_normalized[per]
+            break
+        end
     end
-    ### This for loop was original designed to search "backwards" in the resulting
-    ### table to prevent selecting a variable whose z score was < 1.5.
-    ### It resulted in very good results so we're keeping it for now
-    # for per in Iterators.reverse(perm)
-    #     matched = size(Xobs_new, 2) == largest_idx[per]
-    #     if matched
-    #         root_cause_score_y = diff_normalized[per]
-    #         break
-    #     end
-    # end
     return root_cause_score_y
 end
 
