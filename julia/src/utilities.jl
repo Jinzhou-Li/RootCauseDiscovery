@@ -166,7 +166,7 @@ function find_second_largest(X̃all::Vector{Vector{Float64}})
 end
 
 """
-    reduce_genes(patient_id, y_idx, Xobs, Xint, ground_truth, method)
+    reduce_genes(y_idx, Xobs, Xint, method, verbose)
 
 Treat each gene as the response and run CVLasso to select a subset of genes 
 (estimated Markov blanket). Return new datasets with only these genes. The
@@ -175,11 +175,9 @@ gene used as response is returned as the last element of `selected_idx`
 Later we will use the returned data to run our algorithm. 
 """
 function reduce_genes(
-        patient_id, 
         y_idx::Int, # this col will be treated as response in Xobs when we run lasso
         Xobs::AbstractMatrix{Float64}, 
-        Xint::AbstractMatrix{Float64},
-        ground_truth::DataFrame, # this is only used to access sample ID in Xint
+        Xint_sample::AbstractVector{Float64},
         method::String = "cv", # either "cv" or "nhalf"
         verbose::Bool = true
     )
@@ -195,7 +193,7 @@ function reduce_genes(
         cv = glmnetcv(X, y)
         beta_final = GLMNet.coef(cv)
         if count(!iszero, beta_final) <= 1 # we need at least two variables for our method
-            return reduce_genes(patient_id, y_idx, Xobs, Xint, ground_truth, "nhalf")
+            return reduce_genes(y_idx, Xobs, Xint_sample, "nhalf", verbose)
         end
     elseif method == "nhalf" # ad-hoc method to choose ~n/2 number of non-zero betas
         path = glmnet(X, y)
@@ -223,8 +221,7 @@ function reduce_genes(
 
     # return data containing the subset of selected variables
     Xobs_new = Xobs[:, selected_idx]
-    i = findfirst(x -> x == patient_id, ground_truth[!, "Patient ID"])
-    Xint_sample_new = Xint[i, selected_idx]
+    Xint_sample_new = Xint_sample[selected_idx]
 
     return Xobs_new, Xint_sample_new, selected_idx
 end
@@ -272,7 +269,7 @@ function root_cause_discovery_reduced_dimensional(
         thresholds::Union{Nothing, Vector{Float64}} = nothing
     )
     # first compute z score (needed to compute permutations)
-    z = zscore(Xobs_new, Xint_sample_new') |> vec
+    z = zscore(Xobs_new, Xint_sample_new)
 
     # if no thresholds are provided, compute default
     if isnothing(thresholds)
@@ -322,10 +319,8 @@ applying Laaso to reduce dimension,
 and running our root cause discovery algorithm.
 """
 function root_cause_discovery_high_dimensional(
-        patient_id::String,
         Xobs::AbstractMatrix{Float64}, 
-        Xint::AbstractMatrix{Float64},
-        ground_truth::DataFrame, # this is only used to access sample ID in Xint
+        Xint_sample::AbstractVector{Float64},
         method::String = "cv"; # either "cv" or "nhalf"
         y_idx_z_threshold=1.5,
         nshuffles::Int = 1,
@@ -336,18 +331,16 @@ function root_cause_discovery_high_dimensional(
 
     # To save computational time, we only treat variables that are abberant as
     # response (have large enough z-score)
-    i = findfirst(x -> x == patient_id, ground_truth[!, "Patient ID"])
-    Xint_sample = Xint[i, :]
-    z = zscore(Xobs, Xint_sample') |> vec
+    z = zscore(Xobs, Xint_sample)
     y_indices = compute_y_idx(z, z_threshold=y_idx_z_threshold)
     verbose && println("Trying $(length(y_indices)) y_idx")
-    
+
     # parallel
     root_cause_scores = zeros(p)
     Threads.@threads for y_idx in y_indices
         # run lasso, select gene subset to run root cause discovery
         Xobs_new, Xint_sample_new, _ = reduce_genes(
-            patient_id, y_idx, Xobs, Xint, ground_truth, method, verbose
+            y_idx, Xobs, Xint_sample, method, verbose
         )
         # run our root cause discovery algorithm on reduced data
         root_cause_scores[y_idx] = root_cause_discovery_reduced_dimensional(
