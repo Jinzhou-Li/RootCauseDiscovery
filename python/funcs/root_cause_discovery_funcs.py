@@ -12,7 +12,7 @@ from tqdm import tqdm
 def get_aberrant_thresholds(z_vec, thre_min=0.1, thre_max=5, thre_seq=0.2):
     thresholds_raw = np.arange(thre_min, thre_max, thre_seq)
     thre_new = list()
-    count_temp = 0
+    count_temp = -1
     for threshold in thresholds_raw:
         if np.sum(z_vec >= threshold) > 0:
             if np.sum(z_vec <= threshold) != count_temp:
@@ -150,7 +150,7 @@ def reduce_dimension(y_idx, X_obs, X_int, verbose=True):
         warnings.simplefilter("ignore")
         lasso_cv = LassoCV().fit(X, y)
         beta_final = lasso_cv.coef_
-        if np.sum(beta_final != 0) == 0:  # in this case return n/2 variables
+        if np.sum(beta_final != 0) <= 1:  # in this case return n/2 variables
             _, coef_path, _ = lasso_path(X, y)
             num_nonzeros = np.sum((coef_path != 0), axis=0)
             alpha_idx = np.argmin(np.abs(num_nonzeros - n / 2))
@@ -196,28 +196,22 @@ def process_y_idx_rcd(
     z_new = zscore(X_obs_new, X_int_sample_new)
 
     thresholds = get_aberrant_thresholds(z_new, thre_min=0.1, thre_max=5, thre_seq=0.2)
-
-    best_Xtilde = 0
-    best_OneNonZero_quantification = 0
     for threshold in thresholds:
         permutations = compute_permutations(z_new, threshold=threshold, nshuffles=nshuffles)
         if verbose:
             print("Trying", len(permutations), "permutations for threshold", threshold)
 
         # try all permutations to calculate 'Xtilde' and update 'best_OneNonZero_quantification'
+        root_cause_score_y = 0
         for perm in permutations:
             Xtilde = root_cause_discovery(X_obs_new, X_int_sample_new, perm)
             sorted_X = sorted(Xtilde)
             OneNonZero_quantification = (sorted_X[-1] - sorted_X[-2]) / sorted_X[-2]
 
-            if OneNonZero_quantification > best_OneNonZero_quantification:
-                best_Xtilde = Xtilde
-                best_OneNonZero_quantification = OneNonZero_quantification
-
-    root_cause_score_y = 0
-    if not isinstance(best_Xtilde, int):
-        if max(best_Xtilde) == best_Xtilde[-1]:  # if match y_idx
-            root_cause_score_y = best_OneNonZero_quantification
+            max_index = np.argmax(Xtilde)
+            if max_index == (len(Xtilde)-1):  # recall that the last variable is the one treated as response
+                if root_cause_score_y < OneNonZero_quantification:
+                    root_cause_score_y = OneNonZero_quantification
 
     return y_idx, root_cause_score_y, select_len_y
 
