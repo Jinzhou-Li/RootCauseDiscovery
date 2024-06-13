@@ -183,7 +183,7 @@ function reduce_genes(
     if method == "cv"
         cv = glmnetcv(X, y)
         beta_final = GLMNet.coef(cv)
-        if count(!iszero, beta_final) == 0
+        if count(!iszero, beta_final) <= 5
             return reduce_genes(patient_id, y_idx, Xobs, Xint, group_truth, "nhalf")
         end
     elseif method == "largest_support"
