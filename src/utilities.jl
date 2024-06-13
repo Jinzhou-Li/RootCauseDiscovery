@@ -190,7 +190,13 @@ function reduce_genes(
         path = glmnet(X, y)
         beta_final = path.betas[:, end]
     elseif method == "nhalf" # ad-hoc method to choose ~n/2 number of non-zero betas
-        path = glmnet(X, y)
+        # compute default lambda path
+        r = X'*y
+        lambdamax = maximum(abs, r) / sqrt(n)
+        lambdamin = 0.0000001lambdamax
+        lambda = exp.(range(log(lambdamin), log(lambdamax), length=100)) |> reverse!
+        # run lasso
+        path = glmnet(X, y, lambda=lambda)
         beta_final = path.betas[:, 1]
         best_ratio = abs(0.5 - count(!iszero, beta_final) / n)
         for beta in eachcol(path.betas)
