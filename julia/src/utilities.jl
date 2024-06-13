@@ -192,7 +192,7 @@ function reduce_genes(
     if method == "cv"
         cv = glmnetcv(X, y)
         beta_final = GLMNet.coef(cv)
-        if count(!iszero, beta_final) <= 1 # we need at least two variables for our method
+        if count(!iszero, beta_final) == 0
             return reduce_genes(y_idx, Xobs, Xint_sample, "nhalf", verbose)
         end
     elseif method == "nhalf" # ad-hoc method to choose ~n/2 number of non-zero betas
@@ -268,6 +268,17 @@ function root_cause_discovery_reduced_dimensional(
         nshuffles::Int = 1,
         thresholds::Union{Nothing, Vector{Float64}} = nothing
     )
+    # using RootCauseDiscovery
+    # import RootCauseDiscovery.get_abberant_thresholds
+    # import RootCauseDiscovery.compute_permutations
+    # import RootCauseDiscovery.root_cause_discovery
+    # import RootCauseDiscovery.find_largest
+    # import RootCauseDiscovery.find_second_largest
+    # Xobs_new = randn(10, 2)
+    # Xint_sample_new = randn(2)
+    # nshuffles = 1
+    # thresholds = nothing
+
     # first compute z score (needed to compute permutations)
     z = zscore(Xobs_new, Xint_sample_new)
 
@@ -322,23 +333,20 @@ function root_cause_discovery_high_dimensional(
         Xobs::AbstractMatrix{Float64}, 
         Xint_sample::AbstractVector{Float64},
         method::String = "cv"; # either "cv" or "nhalf"
-        y_idx_z_threshold=1.5,
+        y_idx_z_threshold=1.5, # To save computational time, we only treat variables that are abberant as response (have large enough z-score)
         nshuffles::Int = 1,
         verbose = true,
         thresholds::Union{Nothing, Vector{Float64}} = nothing,
+        y_indices = compute_y_idx(Xobs, Xint_sample, y_idx_z_threshold)
     )
     p = size(Xobs, 2)
-
-    # To save computational time, we only treat variables that are abberant as
-    # response (have large enough z-score)
-    z = zscore(Xobs, Xint_sample)
-    y_indices = compute_y_idx(z, z_threshold=y_idx_z_threshold)
     verbose && println("Trying $(length(y_indices)) y_idx")
 
-    # parallel
+    # assign root cause score one by one
     root_cause_scores = zeros(p)
     Threads.@threads for y_idx in y_indices
         # run lasso, select gene subset to run root cause discovery
+        # note: it is possible that reduce_genes (i.e. CVLasso) select no features
         Xobs_new, Xint_sample_new, _ = reduce_genes(
             y_idx, Xobs, Xint_sample, method, verbose
         )
@@ -367,9 +375,10 @@ end
 """
     compute_y_idx(z::AbstractVector{Float64})
 
-Given Z scores, compute a set of abberant variables whose z-score are larger than some threshold.
+Compute a set of abberant variables whose z-score are larger than some threshold.
 These variables will be treated as response in function 'root_cause_discovery_high_dimensional'
 """
-function compute_y_idx(z::AbstractVector{Float64}; z_threshold=1.5)
+function compute_y_idx(Xobs, Xint_sample, z_threshold=1.5)
+    z = zscore(Xobs, Xint_sample)
     return findall(x -> x > z_threshold, z)
 end
