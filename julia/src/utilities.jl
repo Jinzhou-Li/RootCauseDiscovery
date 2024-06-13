@@ -179,7 +179,8 @@ function reduce_genes(
         Xobs::AbstractMatrix{Float64}, 
         Xint_sample::AbstractVector{Float64},
         method::String = "cv", # either "cv" or "nhalf"
-        verbose::Bool = true
+        verbose::Bool = true,
+        nhalf_threshold = 10 # when CVLasso selects too few, run method=nhalf
     )
     n, p = size(Xobs)
 
@@ -192,11 +193,17 @@ function reduce_genes(
     if method == "cv"
         cv = glmnetcv(X, y)
         beta_final = GLMNet.coef(cv)
-        if count(!iszero, beta_final) <= 1
+        if count(!iszero, beta_final) < nhalf_threshold
             return reduce_genes(y_idx, Xobs, Xint_sample, "nhalf", verbose)
         end
     elseif method == "nhalf" # ad-hoc method to choose ~n/2 number of non-zero betas
-        path = glmnet(X, y)
+        # compute default lambda path
+        r = X'*y
+        lambdamax = maximum(abs, r) / sqrt(n)
+        lambdamin = 0.0000001lambdamax
+        lambda = exp.(range(log(lambdamin), log(lambdamax), length=100)) |> reverse!
+        # run lasso
+        path = glmnet(X, y, lambda=lambda)
         beta_final = path.betas[:, 1]
         best_ratio = abs(0.5 - count(!iszero, beta_final) / n)
         for beta in eachcol(path.betas)
