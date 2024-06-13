@@ -192,7 +192,7 @@ function reduce_genes(
     if method == "cv"
         cv = glmnetcv(X, y)
         beta_final = GLMNet.coef(cv)
-        if count(!iszero, beta_final) == 0
+        if count(!iszero, beta_final) <= 1
             return reduce_genes(y_idx, Xobs, Xint_sample, "nhalf", verbose)
         end
     elseif method == "nhalf" # ad-hoc method to choose ~n/2 number of non-zero betas
