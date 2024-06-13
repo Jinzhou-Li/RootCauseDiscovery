@@ -357,6 +357,7 @@ function root_cause_discovery_high_dimensional(
     end
 
     # assign root cause score for variables whose current score are 0
+    z = zscore(Xobs, Xint_sample)
     idx2 = findall(iszero, root_cause_scores)
     idx1 = findall(!iszero, root_cause_scores)
     if length(idx2) != 0
