@@ -180,7 +180,7 @@ function reduce_genes(
         Xint_sample::AbstractVector{Float64},
         method::String = "cv", # either "cv" or "nhalf"
         verbose::Bool = true,
-        nhalf_threshold = 10 # when CVLasso selects too few, run method=nhalf
+        nhalf_threshold = 5 # when CVLasso selects too few, run method=nhalf
     )
     n, p = size(Xobs)
 
@@ -275,17 +275,6 @@ function root_cause_discovery_reduced_dimensional(
         nshuffles::Int = 1,
         thresholds::Union{Nothing, Vector{Float64}} = nothing
     )
-    # using RootCauseDiscovery
-    # import RootCauseDiscovery.get_abberant_thresholds
-    # import RootCauseDiscovery.compute_permutations
-    # import RootCauseDiscovery.root_cause_discovery
-    # import RootCauseDiscovery.find_largest
-    # import RootCauseDiscovery.find_second_largest
-    # Xobs_new = randn(10, 2)
-    # Xint_sample_new = randn(2)
-    # nshuffles = 1
-    # thresholds = nothing
-
     # first compute z score (needed to compute permutations)
     z = zscore(Xobs_new, Xint_sample_new)
 
@@ -310,6 +299,12 @@ function root_cause_discovery_reduced_dimensional(
         append!(largest, largest_cur)
         append!(largest_idx, largest_idx_cur)
         append!(second_largest, find_second_largest(X̃all))
+        if any(x -> x < 0, largest - second_largest)
+            println("largest = $largest")
+            println("second_largest = $second_largest")
+            println("X̃all = $(X̃all)")
+            error("largest - 2nd largest is negative! Shouldn't happen!")
+        end
     end
 
     diff = largest-second_largest
