@@ -1,5 +1,7 @@
 # RootCauseDiscovery
 
+:warning: **This package is in early development stage. **
+
 To use this package, download [Julia](https://julialang.org/downloads/). Within Julia, install the package via
 ```
 using Pkg
