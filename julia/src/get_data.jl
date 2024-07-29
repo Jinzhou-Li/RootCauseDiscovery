@@ -149,7 +149,8 @@ https://www.ncbi.nlm.nih.gov/pmc/articles/PMC6288422/#:~:text=OUTRIDER%20is%20op
 """
 function QC_gene_expression_data(;
     low_count::Int = 10, 
-    threshold::Float64 = 0.2,
+    threshold::Float64 = 0.1,
+    max_cor::Float64 = 0.999
     )
     # raw data
     genecounts = process_data()
@@ -157,7 +158,7 @@ function QC_gene_expression_data(;
 
     # first column is gene ID
     count_data = @view(genecounts[:, 2:end])
-    
+
     # process gene count file
     nsamples = size(count_data, 2)
     keep_rows = Int[]
@@ -168,6 +169,17 @@ function QC_gene_expression_data(;
         end
     end
     genecounts_filtered = genecounts[keep_rows, :]
+
+    # remove linearly dependent columns
+    Σcor = cor(Matrix(genecounts_filtered[:, 2:end])')
+    while has_linearly_dependent_col(Σcor, max_cor)
+        idx = findall(x -> x > max_cor, UpperTriangular(Σcor))
+        idx = filter!(x -> x[1] != x[2], idx)
+        to_remove = [x[2] for x in idx]
+        to_keep = setdiff(1:size(genecounts_filtered, 1), to_remove)
+        genecounts_filtered = genecounts_filtered[to_keep, :]
+        Σcor = cor(Matrix(genecounts_filtered[:, 2:end])')
+    end
 
     # Make sure the truth root cause gene is preserved
     pass_qc_genes = unique(genecounts_filtered[!, 1]) |> Vector{String}
@@ -210,4 +222,11 @@ function QC_gene_expression_data(;
     return genecounts_normalized_int, 
         genecounts_normalized_obs, 
         root_cause_ground_truth_new
+end
+
+# input is a correlation matrix
+function has_linearly_dependent_col(Σcor::AbstractMatrix, max_cor::Float64)
+    idx = findall(x -> x > max_cor, UpperTriangular(Σcor))
+    idx = filter!(x -> x[1] != x[2], idx)
+    return length(idx) > 0
 end
