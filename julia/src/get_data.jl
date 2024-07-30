@@ -173,7 +173,7 @@ function QC_gene_expression_data(;
     # remove linearly dependent columns
     Σcor = cor(Matrix(genecounts_filtered[:, 2:end])')
     while has_linearly_dependent_col(Σcor, max_cor)
-        idx = findall(x -> x > max_cor, UpperTriangular(Σcor))
+        idx = findall(x -> abs(x) > max_cor, UpperTriangular(Σcor))
         idx = filter!(x -> x[1] != x[2], idx)
         to_remove = [x[2] for x in idx]
         to_keep = setdiff(1:size(genecounts_filtered, 1), to_remove)
