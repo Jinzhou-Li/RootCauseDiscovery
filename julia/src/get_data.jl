@@ -13,12 +13,14 @@ function download_data(outdir::String=datadir())
         ss_file
     )
 
-    # truth root cause data
-    xlsx_file = joinpath(outdir, "13073_2022_1019_MOESM1_ESM.xlsx")
-    Downloads.download(
-        "https://static-content.springer.com/esm/art%3A10.1186%2Fs13073-022-01019-9/MediaObjects/13073_2022_1019_MOESM1_ESM.xlsx",
-        xlsx_file
-    )
+    # ground truth root cause table can be downloaded as below
+    # but it is not needed since the S2, S3, and S4 tables are already 
+    # manually convert to csv and uploaded onto github.
+    # xlsx_file = joinpath(outdir, "13073_2022_1019_MOESM1_ESM.xlsx")
+    # Downloads.download(
+    #     "https://static-content.springer.com/esm/art%3A10.1186%2Fs13073-022-01019-9/MediaObjects/13073_2022_1019_MOESM1_ESM.xlsx",
+    #     xlsx_file
+    # )
 
     # untar
     run(`tar -xvzf $ns_file -C $outdir`)
@@ -32,7 +34,10 @@ end
 + Each column is a sample
 + Each row is a gene
 """
-function process_data(data_dir::String=datadir())
+function process_data(
+        data_dir::String=datadir(), 
+        concatenate="all", # "all", "ss", or "ns"
+    )
     # data should exist in `data_dir`
     ss_dir = joinpath(data_dir, "fib_ss--hg19--gencode34")
     ns_dir = joinpath(data_dir, "fib_ns--hg19--gencode34")
@@ -42,40 +47,76 @@ function process_data(data_dir::String=datadir())
     # read data
     ss_genecounts = CSV.read(joinpath(ss_dir, "geneCounts.tsv.gz"), DataFrame)
     ns_genecounts = CSV.read(joinpath(ns_dir, "geneCounts.tsv.gz"), DataFrame)
-    
+
     # remove ".15_5" after geneID
     ss_genecounts[!, "geneID"] .= [split(gene, '.')[1] for gene in ss_genecounts[!, "geneID"]]
     ns_genecounts[!, "geneID"] .= [split(gene, '.')[1] for gene in ns_genecounts[!, "geneID"]]
-    genecounts = hcat(ss_genecounts, ns_genecounts[:, 2:end])
-    # @show size(genecounts) # 62492×424
 
-    return genecounts
+    if concatenate == "all"
+        genecounts = hcat(ss_genecounts, ns_genecounts[:, 2:end])
+        # @show size(genecounts) # 62492×424
+        return genecounts
+    elseif concatenate == "ns"
+        return ns_genecounts # 62492×155
+    elseif concatenate == "ss"
+        return ss_genecounts # 62492×270
+    else
+        error("concatenate must be `all`, `ns`, or `ss`")
+    end
+end
+
+function process_root_cause_S2_table()
+
 end
 
 """
     process_root_cause_truth(genecounts::DataFrame)
 
-Assumes "gene_name_mapping_v29.tsv" and "13073_2022_1019_MOESM1_ESM.csv" 
+Assumes "gene_name_mapping_v29.tsv" and "13073_2022_1019_MOESM1_ESM_S{2..4}.csv" 
 exist in `data_dir`
 """
 function process_root_cause_truth(
         genecounts::DataFrame,
-        data_dir::String=datadir()
+        data_dir::String=RootCauseDiscovery.datadir(),
     )
-    # read ground truth 
-    df = CSV.read(joinpath(data_dir, "13073_2022_1019_MOESM1_ESM.csv"), DataFrame, 
+    S2_file = "13073_2022_1019_MOESM1_ESM_S2.csv"
+    S3_file = "13073_2022_1019_MOESM1_ESM_S3.csv"
+    S4_file = "13073_2022_1019_MOESM1_ESM_S4.csv"
+    df2 = process_one_root_cause_ground_truth_table(S2_file, genecounts, data_dir)
+    df3 = process_one_root_cause_ground_truth_table(S3_file, genecounts, data_dir)
+    df4 = process_one_root_cause_ground_truth_table(S4_file, genecounts, data_dir)
+
+    # for table S3, rename "Candidate gene" to "Genetic diagnosis"
+    rename!(df3, "Candidate gene" => "Genetic diagnosis")
+
+    return vcat(df2, df3, df4)
+end
+
+function process_one_root_cause_ground_truth_table(
+        table::String,
+        genecounts::DataFrame,
+        data_dir::String=RootCauseDiscovery.datadir(),
+    )
+    # determine the root-cause column name in `table`
+    if table == "13073_2022_1019_MOESM1_ESM_S2.csv"
+        RC_col_name = "Genetic diagnosis"
+    elseif table == "13073_2022_1019_MOESM1_ESM_S3.csv"
+        RC_col_name = "Candidate gene"
+    elseif table == "13073_2022_1019_MOESM1_ESM_S4.csv"
+        RC_col_name = "Genetic diagnosis"
+    else
+        error("unknow table $table!")
+    end
+
+    # read ground truth
+    df = CSV.read(joinpath(data_dir, table), DataFrame, 
         header=2)
 
     # pre-process data
-    patient_IDs = df[!, "Patient ID"]
-    has_entry = findall(!ismissing, patient_IDs)
+    has_entry = findall(!ismissing, df[!, "Patient ID"])
     df = df[has_entry, :]
 
-    # for each sample, find the root cause gene
-    patient_IDs = df[!, "Patient ID"]
-    root_cause = df[!, "Genetic diagnosis"]
-
-    # for each root cause gene, find the corresponding name in the ns_genecounts file
+    # for each root cause gene, find the corresponding name in the gene_name_mapping_v29.tsv file
     map_file = CSV.read(joinpath(data_dir, "gene_name_mapping_v29.tsv"), DataFrame, delim=',')
     map_dict = Dict{String, String}()
     for i in 1:size(map_file, 1)
@@ -87,25 +128,32 @@ function process_root_cause_truth(
     # first version of processed data frame (underlying truth)
     gene_ID = String[]
     for i in 1:size(df, 1)
-        push!(gene_ID, map_dict[df[i, "Genetic diagnosis"]])
+        push!(gene_ID, map_dict[df[i, RC_col_name]])
     end
     df[!, "gene_id"] = gene_ID
-    root_cause_df = df[!, [2, 6, 21]]
+    root_cause_df = df[!, ["Patient ID", RC_col_name, "gene_id"]]
 
     # add patient index and root cause index to processed df
     col_idx = Int[]
     row_idx = Int[]
+    keep_rows = Int[]
     genecounts_col_names = names(genecounts)
     genecounts_row_names = genecounts[!, "geneID"]
-    for row in eachrow(root_cause_df)
+    for (i, row) in enumerate(eachrow(root_cause_df))
         patient_id = row["Patient ID"]
         patient_rootcause_gene = row["gene_id"]
-        push!(col_idx, findfirst(x -> x == patient_id, genecounts_col_names))
-        push!(row_idx, findfirst(x -> x == patient_rootcause_gene, genecounts_row_names))
+        c = findfirst(x -> x == patient_id, genecounts_col_names)
+        r = findfirst(x -> x == patient_rootcause_gene, genecounts_row_names)
+        if !isnothing(c) && !isnothing(r)
+            push!(col_idx, c)
+            push!(row_idx, r)
+            push!(keep_rows, i)
+        end
     end
+    root_cause_df = root_cause_df[keep_rows, :]
     root_cause_df[!, "patient column index in genecounts"] = col_idx
     root_cause_df[!, "root cause row index in genecounts"] = row_idx
-    return root_cause_df # 32×5
+    return root_cause_df
 end
 
 function estimate_size_factor(K::AbstractMatrix)
@@ -150,10 +198,11 @@ https://www.ncbi.nlm.nih.gov/pmc/articles/PMC6288422/#:~:text=OUTRIDER%20is%20op
 function QC_gene_expression_data(;
     low_count::Int = 10, 
     threshold::Float64 = 0.1,
-    max_cor::Float64 = 0.999
+    max_cor::Float64 = 0.999,
+    concatenate::String = "all" # "all", "ss", or "ns"
     )
     # raw data
-    genecounts = process_data()
+    genecounts = process_data(RootCauseDiscovery.datadir(), concatenate)
     root_cause_ground_truth = process_root_cause_truth(genecounts)
 
     # first column is gene ID
@@ -201,7 +250,8 @@ function QC_gene_expression_data(;
         genecounts_normalized[!, col_names[j]] = col
     end
 
-    # update the truth root cause mapping file
+    # update the ground truth root cause table after deleting some genes 
+    # (which causes the position of root cause genes to change)
     root_cause_ground_truth_new = deepcopy(root_cause_ground_truth)
     full_geneID = genecounts_filtered[!, "geneID"]
     for i in 1:size(root_cause_ground_truth, 1)
@@ -211,8 +261,8 @@ function QC_gene_expression_data(;
     end
 
     # finally, we create 2 subsets:
-    #   1. One includes only the 32 columns (samples) for which root cause gene is known
-    #   2. The other includes all other columns (observational data)
+    #   1. One includes only AE samples for which root cause gene is known 
+    #   2. The other includes all other samples (observational data)
     known_patient_id = root_cause_ground_truth_new[!, "Patient ID"]
     subset1_idx = indexin(known_patient_id, names(genecounts_normalized))
     subset2_idx = setdiff(1:size(genecounts_normalized, 2), subset1_idx)
