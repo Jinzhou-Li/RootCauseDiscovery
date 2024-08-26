@@ -89,7 +89,17 @@ function process_root_cause_truth(
     # for table S3, rename "Candidate gene" to "Genetic diagnosis"
     rename!(df3, "Candidate gene" => "Genetic diagnosis")
 
-    return vcat(df2, df3, df4)
+    # concatenate all 3 
+    df = vcat(df2, df3, df4)
+
+    # "RNA detect" actually indicate whether the gene is AE
+    # so we change that columnname to indicate this
+    is_AE = [!ismissing(x) && x == "x" for x in df[!, "RNA defect"]]
+    df = df[!, ["Patient ID", "Genetic diagnosis", "gene_id", 
+        "patient column index in genecounts", "root cause row index in genecounts"]]
+    df[!, "is AE"] = is_AE
+
+    return df
 end
 
 function process_one_root_cause_ground_truth_table(
@@ -131,7 +141,10 @@ function process_one_root_cause_ground_truth_table(
         push!(gene_ID, map_dict[df[i, RC_col_name]])
     end
     df[!, "gene_id"] = gene_ID
-    root_cause_df = df[!, ["Patient ID", RC_col_name, "gene_id"]]
+
+    # keep only necessary columns. Note: due to the csv format conversion, 
+    # "RNA detect" actually indicate whether the gene is AE
+    root_cause_df = df[!, ["Patient ID", RC_col_name, "gene_id", "RNA defect"]] 
 
     # add patient index and root cause index to processed df
     col_idx = Int[]
@@ -178,7 +191,6 @@ function geomeanNZ(v::AbstractVector)
     end
 end
 
-
 """
     QC_gene_expression_data(;low_count=10, threshold=0.2)
 
@@ -201,6 +213,13 @@ function QC_gene_expression_data(;
     max_cor::Float64 = 0.999,
     concatenate::String = "all" # "all", "ss", or "ns"
     )
+    # low_count = 10
+    # threshold = 0.1
+    # max_cor = 0.999
+    # concatenate = "all"
+    # import RootCauseDiscovery.estimate_size_factor
+    # import RootCauseDiscovery.has_linearly_dependent_col
+
     # raw data
     genecounts = process_data(RootCauseDiscovery.datadir(), concatenate)
     root_cause_ground_truth = process_root_cause_truth(genecounts)
@@ -263,8 +282,10 @@ function QC_gene_expression_data(;
     # finally, we create 2 subsets:
     #   1. One includes only AE samples for which root cause gene is known 
     #   2. The other includes all other samples (observational data)
-    known_patient_id = root_cause_ground_truth_new[!, "Patient ID"]
-    subset1_idx = indexin(known_patient_id, names(genecounts_normalized))
+    known_AE_patient_id = root_cause_ground_truth_new[
+        root_cause_ground_truth_new[!, "is AE"], "Patient ID"
+    ]
+    subset1_idx = indexin(known_AE_patient_id, names(genecounts_normalized))
     subset2_idx = setdiff(1:size(genecounts_normalized, 2), subset1_idx)
     genecounts_normalized_int = genecounts_normalized[:, vcat(1, subset1_idx)]
     genecounts_normalized_obs = genecounts_normalized[:, subset2_idx]
