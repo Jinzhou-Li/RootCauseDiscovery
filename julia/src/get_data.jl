@@ -65,10 +65,6 @@ function process_data(
     end
 end
 
-function process_root_cause_S2_table()
-
-end
-
 """
     process_root_cause_truth(genecounts::DataFrame)
 
