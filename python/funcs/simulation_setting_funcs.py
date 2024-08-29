@@ -1,6 +1,9 @@
 import numpy as np
 from scipy import linalg
 
+np.set_printoptions(linewidth=200, threshold=np.inf)
+
+
 # functions for simulations
 ################### Randomly generate lower triangular matrix B
 def B_random(p, s_B, B_value_min, B_value_max):
@@ -12,6 +15,7 @@ def B_random(p, s_B, B_value_min, B_value_max):
     B[lowertri_index[0][nonzero_index], lowertri_index[1][nonzero_index]] = np.random.uniform(B_value_min, B_value_max,
                                                                                               num_nonzero_entry)
     return B
+
 
 ################### Randomly generate lower triangular matrix B corresponds to a hub graph
 def B_hub_func(num_hub, size_up_block, size_low_block, intersect_prop, s_B, B_value_min, B_value_max):
@@ -32,7 +36,7 @@ def B_hub_func(num_hub, size_up_block, size_low_block, intersect_prop, s_B, B_va
     for i in range(num_hub):
         start_index_up = i * size_up_block
         B[start_index_up:(start_index_up + size_up_block), start_index_up:(start_index_up + size_up_block)] = \
-        B_upper_list[i]
+            B_upper_list[i]
 
     for i in range(num_hub):
         start_index_in_row = num_hub * size_up_block + i
@@ -47,7 +51,7 @@ def B_hub_func(num_hub, size_up_block, size_low_block, intersect_prop, s_B, B_va
     for i in range(num_hub):
         start_index_low = num_hub * size_up_block + num_hub + i * size_low_block
         B[start_index_low:(start_index_low + size_low_block), start_index_low:(start_index_low + size_low_block)] = \
-        B_lower_list[i]
+            B_lower_list[i]
 
     return B
 
@@ -72,7 +76,7 @@ def rescale_B_func(B, var_X_design, sigma2_error, tol, step_size, max_count):
 
             count_while = 0
             B_temp = B.copy()
-            while abs(var_temp - var_X_design[i]) > tol:
+            while abs(var_temp - var_X_design[i]) > tol / 50:
                 if var_temp - var_X_design[i] > 0:
                     rescale_temp = rescale_temp * (1 + step_size)
                     B_temp = B.copy()
@@ -94,6 +98,7 @@ def rescale_B_func(B, var_X_design, sigma2_error, tol, step_size, max_count):
 
     return B, sigma2_error_copy
 
+
 # Generate a random or hub DAG for simulation, with permuted variable ordering
 def generate_setting(dag_type, s_B, B_value_min, B_value_max, err_min, err_max, var_X_min, var_X_max,
                      p=0, num_hub=0, size_up_block=0, size_low_block=0, intersect_prop=0,
@@ -110,7 +115,8 @@ def generate_setting(dag_type, s_B, B_value_min, B_value_max, err_min, err_max, 
 
     sigma2_error_raw = np.random.uniform(err_min, err_max, p)  # rep(var_error,p) # do not make error variance the same!
     var_X_design = np.random.uniform(var_X_min, var_X_max, p)  # preset variance of X we want to get based on the SEM
-    B_scaled, sigma2_error_new = rescale_B_func(B_unscaled, var_X_design, sigma2_error_raw, tol=tol, step_size=step_size,
+    B_scaled, sigma2_error_new = rescale_B_func(B_unscaled, var_X_design, sigma2_error_raw, tol=tol,
+                                                step_size=step_size,
                                                 max_count=max_count)
 
     # # check that the variance of X is indeed close to the preset one
@@ -128,8 +134,9 @@ def generate_setting(dag_type, s_B, B_value_min, B_value_max, err_min, err_max, 
     b = np.random.uniform(-5, 5, p)  # intercept
     return B, sigma2_error, b
 
+
 # Generate n observartional and m interventional data
-def generate_data(n, m, p, B, sigma2_error, b, int_mean, int_sd):
+def generate_data(n, m, p, B, sigma2_error, b, delta_r):
     # True root causes
     RC = np.random.choice(np.arange(p), size=m, replace=True)
     I = np.identity(p)
@@ -141,13 +148,14 @@ def generate_data(n, m, p, B, sigma2_error, b, int_mean, int_sd):
         X_obs[i, :] = linalg.solve(I - B, (b + error).T).reshape(p)
     for i in range(m):
         delta = np.repeat(0, p)
-        delta[RC[i]] = np.random.normal(int_mean, int_sd, 1)
+        delta[RC[i]] = delta_r
         error = np.random.multivariate_normal(np.repeat(0, p), sigma2_error, 1)
         X_int[i, :] = linalg.solve(I - B, (b + error + delta).T).reshape(p)
 
     return X_obs, X_int, RC
 
-def generate_data_latent(n, m, p, latent_proportion, B, sigma2_error, b, int_mean, int_sd):
+
+def generate_data_latent(n, m, p, latent_proportion, B, sigma2_error, b, delta_r):
     # randomly sample some variables as latent
     latent_idx = np.random.choice(np.arange(p), size=int(latent_proportion * p), replace=False)
     non_latent_idx = np.setdiff1d(np.arange(p), latent_idx)
@@ -164,7 +172,7 @@ def generate_data_latent(n, m, p, latent_proportion, B, sigma2_error, b, int_mea
         X_obs[i, :] = linalg.solve(I - B, (b + error).T).reshape(p)
     for i in range(m):
         delta = np.repeat(0, p)
-        delta[RC[i]] = np.random.normal(int_mean, int_sd, 1)
+        delta[RC[i]] = delta_r
         error = np.random.multivariate_normal(np.repeat(0, p), sigma2_error, 1)
         X_int[i, :] = linalg.solve(I - B, (b + error + delta).T).reshape(p)
 
@@ -177,3 +185,29 @@ def generate_data_latent(n, m, p, latent_proportion, B, sigma2_error, b, int_mea
         RC_new[i] = RC[i] - np.sum(latent_idx < RC[i])
 
     return X_obs_new, X_int_new, RC_new
+
+
+# Generate n observartional and m interventional data, with different error types
+def generate_data_errorType(n, m, p, B, b, delta_r, error_type, sigma2_error=None):
+    # True root causes
+    RC = np.random.choice(np.arange(p), size=m, replace=True)
+    I = np.identity(p)
+
+    X_obs = np.zeros((n, p))
+    X_int = np.zeros((m, p))
+    for i in range(n):
+        if error_type == "Gaussian":
+            error = np.random.multivariate_normal(np.repeat(0, p), sigma2_error, 1)
+        elif error_type == "Uniform":
+            error = np.random.uniform(1, 10, p)
+        X_obs[i, :] = linalg.solve(I - B, (b + error).T).reshape(p)
+    for i in range(m):
+        delta = np.repeat(0, p)
+        delta[RC[i]] = delta_r
+        if error_type == "Gaussian":
+            error = np.random.multivariate_normal(np.repeat(0, p), sigma2_error, 1)
+        elif error_type == "Uniform":
+            error = np.random.uniform(1, 10, p)
+        X_int[i, :] = linalg.solve(I - B, (b + error + delta).T).reshape(p)
+
+    return X_obs, X_int, RC

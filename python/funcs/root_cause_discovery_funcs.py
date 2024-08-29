@@ -5,8 +5,8 @@ from sklearn.linear_model import LassoCV, lasso_path
 import warnings  # ignore the warnings
 from sklearn.covariance import ShrunkCovariance
 from joblib import Parallel, delayed
+from lingam import DirectLiNGAM
 from tqdm import tqdm
-
 
 # generate thresholds to determine aberrant set, make sure no repeated permutations later.
 def get_aberrant_thresholds(z_vec, thre_min=0.1, thre_max=5, thre_seq=0.2):
@@ -20,7 +20,6 @@ def get_aberrant_thresholds(z_vec, thre_min=0.1, thre_max=5, thre_seq=0.2):
                 thre_new.append(threshold)
     thre_new = np.array(thre_new)
     return thre_new
-
 
 # `X_obs` and `X_int` are matrices
 def zscore(X_obs, X_int):
@@ -104,7 +103,7 @@ def root_cause_discovery(X_obs, X_int, perm):
     return abs(X_tilde)
 
 
-# Main root cause discovery function (Algo 3 in the paper)
+# Main root cause discovery function (Algo 2 in the paper)
 def root_cause_discovery_main(X_obs, X_int, nshuffles=1, thresholds=None, verbose=True):
     p = X_obs.shape[1]
     assert p == len(X_int), "Number of variables mismatch"
@@ -133,12 +132,11 @@ def root_cause_discovery_main(X_obs, X_int, nshuffles=1, thresholds=None, verbos
     idx2 = np.where(root_cause_score == 0)[0]
     if len(idx2) != 0:
         idx1 = np.where(root_cause_score != 0)[0]
-        max_RC_score_idx2 = np.min(root_cause_score[idx1]) - 0.0001
+        max_RC_score_idx2 = np.min(root_cause_score[idx1])/2
         root_cause_score[idx2] = z[idx2] / (np.max(z[idx2]) / max_RC_score_idx2)
     return root_cause_score
 
 
-# this is same function as 'reduce_gene'
 def reduce_dimension(y_idx, X_obs, X_int, verbose=True):
     # response and design matrix for Lasso
     y = X_obs[:, y_idx]
@@ -215,7 +213,7 @@ def process_y_idx_rcd(
 
     return y_idx, root_cause_score_y, select_len_y
 
-
+# Root cause discovery function for high-dimensional case (Algo 3 in the paper)
 def root_cause_discovery_highdim_parallel(
         X_obs,
         X_int,
@@ -223,7 +221,7 @@ def root_cause_discovery_highdim_parallel(
         y_idx_z_threshold=1.5,
         nshuffles=1,
         verbose=True,
-        Precision_mat=None):  # New parameter to specify the number of cores
+        Precision_mat=None):  # Parameter to specify the number of cores
     n, p = X_obs.shape
     z = zscore(X_obs, X_int)
     y_indices = np.where(z > y_idx_z_threshold)[0]
@@ -242,9 +240,47 @@ def root_cause_discovery_highdim_parallel(
     idx1 = np.where(root_cause_score != 0)[0]
     if len(idx2) != 0:
         if len(idx1) != 0:
-            max_RC_score_idx2 = np.min(root_cause_score[idx1]) - 0.0001
+            max_RC_score_idx2 = np.min(root_cause_score[idx1])/2
             root_cause_score[idx2] = z[idx2] / (np.max(z[idx2]) / max_RC_score_idx2)
         else:
             root_cause_score = z
 
     return root_cause_score, select_len
+
+# A method based on LiNGAM: for comparison in simulations
+def get_rank_LiNGAM(X_obs, X_int, RC):
+    Zscores = zscore(X_obs, X_int)
+
+    # Fit LiNGAM
+    model = DirectLiNGAM()
+    model.fit(X_obs)
+    causal_order_lingam = np.array(model.causal_order_, dtype=int)
+
+    thre_abe_opt = Zscores[RC]  # this is the 'optimal threshold': gaurantees better than z-score (unavailable in practice)
+    thre_abe_1 = 2
+    thre_abe_2 = 5
+    thre_abe_3 = 10
+
+    rank_LiNGAM_opt = get_rank_LiNGAM_one_thre(Zscores, thre_abe_opt, causal_order_lingam)
+    rank_LiNGAM_1 = get_rank_LiNGAM_one_thre(Zscores, thre_abe_1, causal_order_lingam)
+    rank_LiNGAM_2 = get_rank_LiNGAM_one_thre(Zscores, thre_abe_2, causal_order_lingam)
+    rank_LiNGAM_3 = get_rank_LiNGAM_one_thre(Zscores, thre_abe_3, causal_order_lingam)
+
+    return rank_LiNGAM_opt, rank_LiNGAM_1, rank_LiNGAM_2, rank_LiNGAM_3, thre_abe_opt
+
+def get_rank_LiNGAM_one_thre(Zscores, thre_abe, causal_order_lingam):
+    p = len(Zscores)
+    abe_set = np.where(Zscores >= thre_abe)[0]
+
+    remain_set = np.setdiff1d(np.array(range(p)), abe_set)
+
+    Zscores_remian_set = Zscores[list(remain_set)]
+    rank_remain_set = list(remain_set[np.argsort(-Zscores_remian_set)])
+
+    abe_rank = []
+    for i in causal_order_lingam:
+        if i in abe_set:
+            abe_rank.append(i)
+
+    Lin_rank = abe_rank + rank_remain_set
+    return np.array(Lin_rank, dtype=int)
