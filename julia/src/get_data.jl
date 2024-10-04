@@ -151,7 +151,7 @@ function process_one_root_cause_ground_truth_table(
     for (i, row) in enumerate(eachrow(root_cause_df))
         patient_id = row["Patient ID"]
         patient_rootcause_gene = row["gene_id"]
-        c = findfirst(x -> x == patient_id, genecounts_col_names)
+        c = findfirst(x -> x == strip(patient_id), genecounts_col_names)
         r = findfirst(x -> x == patient_rootcause_gene, genecounts_row_names)
         if !isnothing(c) && !isnothing(r)
             push!(col_idx, c)
