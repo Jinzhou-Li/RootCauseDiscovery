@@ -95,6 +95,9 @@ function process_root_cause_truth(
         "patient column index in genecounts", "root cause row index in genecounts"]]
     df[!, "is AE"] = is_AE
 
+    # strip trailing white spaces from patient IDs
+    df[!, "Patient ID"] .= strip.(df[!, "Patient ID"])
+
     return df
 end
 
