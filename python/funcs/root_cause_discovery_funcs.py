@@ -284,3 +284,59 @@ def get_rank_LiNGAM_one_thre(Zscores, thre_abe, causal_order_lingam):
 
     Lin_rank = abe_rank + rank_remain_set
     return np.array(Lin_rank, dtype=int)
+
+# A method based on LiNGAM and the invariance idea, so no need to choose threshold. For comparison in simulations
+def get_feasible_ordering(B): # we also want to take a look at the performance when using oracle causal ordering
+    # find an oracle causal ordering
+    p = B.shape[0]
+    B_copy = B.copy()
+    causal_ordering = []
+    temp_odering_old = list(np.where(np.sum(B_copy != 0, 1) == 0)[0])
+    causal_ordering = causal_ordering + temp_odering_old
+    B_copy[:, temp_odering_old] = 0
+
+    while np.sum(B_copy != 0) != 0:
+        temp_odering_new = [x for x in list(np.where(np.sum(B_copy != 0, 1) == 0)[0]) if x not in temp_odering_old]
+        causal_ordering = causal_ordering + temp_odering_new
+        temp_odering_old = list(np.where(np.sum(B_copy != 0, 1) == 0)[0])
+        B_copy[:, temp_odering_old] = 0
+
+    # add the remaining variables
+    temp_odering_new = [x for x in range(p) if x not in causal_ordering]
+    causal_ordering = causal_ordering + temp_odering_new
+    return causal_ordering
+
+
+# Function to calculate residual by conditional on nonDescandent (in a nodewise manner)
+def get_InvaScore(X_obs, X_int, B, oracle_ordering=False):
+    # B is only used to get 'lingam_est_ordering_correct '
+    p = X_obs.shape[1]
+    lingam_est_ordering_correct = False
+
+    if oracle_ordering == False:
+        # Fit LiNGAM
+        model = DirectLiNGAM()
+        model.fit(X_obs)
+        causal_order_lingam = np.array(model.causal_order_, dtype=int)
+
+        # verify whether causal_order_lingam is a causal ordering
+        Permut_mat_LiNGAM = np.eye(p)[causal_order_lingam]
+        lingam_est_ordering_correct = np.all(np.triu(Permut_mat_LiNGAM @ B @ Permut_mat_LiNGAM.T, 1) == 0)
+        used_ordering = causal_order_lingam
+    if oracle_ordering == True:
+        used_ordering = np.array(get_feasible_ordering(B))
+
+    InvaScore = np.zeros(p)
+    for j in range(p):
+        y_train = X_obs[:, used_ordering[j]]
+        y_true = X_int[used_ordering[j]]
+        if j == 0:
+            InvaScore[used_ordering[j]] = (y_true - np.mean(y_train) / np.std(y_train)) ** 2
+        else:
+            X_train = X_obs[:, list(used_ordering[:j, ])]
+            X_test = X_int[list(used_ordering[:j, ])].reshape(1, -1)
+            lasso_cv = LassoCV(cv=10)
+            lasso_cv.fit(X_train, y_train)
+            y_test = lasso_cv.predict(X_test)
+            InvaScore[used_ordering[j]] = (y_true - y_test[0]) ** 2
+    return InvaScore, lingam_est_ordering_correct
