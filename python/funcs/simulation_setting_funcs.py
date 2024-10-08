@@ -1,9 +1,6 @@
 import numpy as np
 from scipy import linalg
 
-np.set_printoptions(linewidth=200, threshold=np.inf)
-
-
 # functions for simulations
 ################### Randomly generate lower triangular matrix B
 def B_random(p, s_B, B_value_min, B_value_max):
@@ -15,7 +12,6 @@ def B_random(p, s_B, B_value_min, B_value_max):
     B[lowertri_index[0][nonzero_index], lowertri_index[1][nonzero_index]] = np.random.uniform(B_value_min, B_value_max,
                                                                                               num_nonzero_entry)
     return B
-
 
 ################### Randomly generate lower triangular matrix B corresponds to a hub graph
 def B_hub_func(num_hub, size_up_block, size_low_block, intersect_prop, s_B, B_value_min, B_value_max):
@@ -185,7 +181,6 @@ def generate_data_latent(n, m, p, latent_proportion, B, sigma2_error, b, delta_r
         RC_new[i] = RC[i] - np.sum(latent_idx < RC[i])
 
     return X_obs_new, X_int_new, RC_new
-
 
 # Generate n observartional and m interventional data, with different error types
 def generate_data_errorType(n, m, p, B, b, delta_r, error_type, sigma2_error=None):
