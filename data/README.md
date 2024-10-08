@@ -1,10 +1,43 @@
 # Data
 
-For exact codes used to download and preprocess these data, see codes in file `https://github.com/biona001/RootCauseDiscovery/blob/main/julia/src/get_data.jl`.
+## Obtaining QC'd gene expression data
+
+To obtain real data used in our paper:
+1. Download and install [Julia](https://julialang.org/downloads). 
+2. Within Julia, install our package via
+    ```
+    using Pkg
+    Pkg.add(PackageSpec(url="https://github.com/Jinzhou-Li/RootCauseDiscovery.git", subdir="julia"))
+    ```
+3. After the package is installed, copy and paste the following into Julia
+    ```julia
+    using RootCauseDiscovery
+
+    # Download, read, filter, QC, and log (base 2) transform data.
+    transform_int, transform_obs, ground_truth = QC_gene_expression_data(
+        low_count = 10,
+        threshold = 0.1, 
+        max_cor = 0.999, 
+    )
+
+    # check dimension
+    size(transform_int) # (19736, 60)
+    size(transform_obs) # (19736, 365)
+    size(ground_truth) # (70, 6)
+
+    # convert to numeric matrices with rows as samples and columns as genes
+    Xobs = transform_obs[:, 2:end] |> Matrix |> transpose
+    Xint = transform_int[:, 2:end] |> Matrix |> transpose
+
+    # get gene IDs
+    gene_ids = transform_obs[:, 1]
+    ```
+
+To see how `QC_gene_expression_data` is implemented, see `https://github.com/Jinzhou-Li/RootCauseDiscovery/blob/main/julia/src/get_data.jl`.
 
 ## Real data analysis 
 
-Due to Julia's computational efficiency, we used julia code located at `https://github.com/biona001/RootCauseDiscovery/julia` for real data analysis. To reproduce the results, see the notebooks located at `https://github.com/biona001/RootCauseDiscovery/julia/notebooks`. 
+Due to Julia's computational efficiency, we used julia code located at `https://github.com/Jinzhou-Li/RootCauseDiscovery/tree/main/julia/src` for real data analysis. To reproduce the results, see the notebooks located at `https://github.com/Jinzhou-Li/RootCauseDiscovery/tree/main/julia/notebook`. 
 
 ## Ground truth data
 

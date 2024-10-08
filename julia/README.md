@@ -7,3 +7,7 @@ Pkg.add(PackageSpec(url="https://github.com/biona001/RootCauseDiscovery.git", su
 ```
 
 We used this package for our real data analysis due to Julia's computational efficiency.
+
+## Example usage
+
+See `example.ipynb` under `notebook` folder for a simulated example and a real-data example.
