@@ -40,13 +40,13 @@ def zscore(X_obs, X_int):
 
 # `X_obs` is matrix, `X_int` is a vector
 def zscore_vec(X_obs, X_int):
-    ngenes = len(X_int)
-    assert X_obs.shape[1] == ngenes, "Number of genes mismatch"
+    nvars = len(X_int)
+    assert X_obs.shape[1] == nvars, "Number of variables mismatch"
     # observational data's mean and std
     mu = np.mean(X_obs, axis=0)
     sigma = np.std(X_obs, axis=0, ddof=1)
-    # compute squared Z scores for each patient in interventional data
-    zs = np.array([(abs((X_int[i] - mu[i]) / sigma[i])) ** 2 for i in range(ngenes)])
+    # compute squared Z scores for each interventional samples
+    zs = np.array([(abs((X_int[i] - mu[i]) / sigma[i])) ** 2 for i in range(nvars)])
     return zs
 
 
