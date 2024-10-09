@@ -1,6 +1,6 @@
 # Data
 
-## Obtaining QC'd gene expression data
+## Obtaining QC'd (preprocessed) gene expression data
 
 To obtain real data used in our paper:
 1. Download and install [Julia](https://julialang.org/downloads). 
@@ -39,7 +39,7 @@ To see how `QC_gene_expression_data` is implemented, see `https://github.com/Jin
 
 Due to Julia's computational efficiency, we used julia code located at `https://github.com/Jinzhou-Li/RootCauseDiscovery/tree/main/julia/src` for real data analysis. To reproduce the results, see the notebooks located at `https://github.com/Jinzhou-Li/RootCauseDiscovery/tree/main/julia/notebook`. 
 
-## Ground truth data
+## Ground truth table of the root cause
 
 This repo contains 2 files needed for our real data analysis:
 + **13073_2022_1019_MOESM1_ESM.csv**: we treat the gene listed under 'genetic diagnosis' in this table as the 'ground truth' root cause for each patient
