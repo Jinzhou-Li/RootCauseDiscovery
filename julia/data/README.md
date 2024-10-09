@@ -2,7 +2,7 @@
 
 For exact codes used to download and preprocess these data, see codes in file `https://github.com/biona001/RootCauseDiscovery.jl/blob/main/julia/src/get_data.jl`.
 
-## Ground truth data
+## Ground truth table of the root cause
 
 This repo contains 2 files needed for our real data analysis:
 + **13073_2022_1019_MOESM1_ESM.csv**: we treat the gene listed under 'genetic diagnosis' in this table as the 'ground truth' root cause for each patient
