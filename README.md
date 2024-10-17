@@ -1,6 +1,6 @@
 # RootCauseDiscovery
 
-This repository contains Python and Julia codes for implementing the root cause discovery methods in paper XXX. The root cause discovery method does XXXX
+This repository contains Python and Julia codes for implementing the root cause discovery methods in paper [Root cause discovery via permutations and Cholesky decomposition](https://arxiv.org/abs/2410.12151). We use the proposed root cause discovery method to discover the disease-causing gene of rare disease patients with a monogenic disorder.
 
 ## Python code for Root Cause Discovery
 
