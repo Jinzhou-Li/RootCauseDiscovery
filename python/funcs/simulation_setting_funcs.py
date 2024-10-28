@@ -194,7 +194,7 @@ def generate_data_errorType(n, m, p, B, b, delta_r, error_type, sigma2_error=Non
         if error_type == "Gaussian":
             error = np.random.multivariate_normal(np.repeat(0, p), sigma2_error, 1)
         elif error_type == "Uniform":
-            error = np.random.uniform(1, 10, p)
+            error = np.random.uniform(-5, 5, p)
         X_obs[i, :] = linalg.solve(I - B, (b + error).T).reshape(p)
     for i in range(m):
         delta = np.repeat(0, p)
@@ -202,7 +202,7 @@ def generate_data_errorType(n, m, p, B, b, delta_r, error_type, sigma2_error=Non
         if error_type == "Gaussian":
             error = np.random.multivariate_normal(np.repeat(0, p), sigma2_error, 1)
         elif error_type == "Uniform":
-            error = np.random.uniform(1, 10, p)
+            error = np.random.uniform(-5, 5, p)
         X_int[i, :] = linalg.solve(I - B, (b + error + delta).T).reshape(p)
 
     return X_obs, X_int, RC
