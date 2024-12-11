@@ -40,13 +40,13 @@ def zscore(X_obs, X_int):
 
 # `X_obs` is matrix, `X_int` is a vector
 def zscore_vec(X_obs, X_int):
-    nvars = len(X_int)
-    assert X_obs.shape[1] == nvars, "Number of variables mismatch"
+    ngenes = len(X_int)
+    assert X_obs.shape[1] == ngenes, "Number of genes mismatch"
     # observational data's mean and std
     mu = np.mean(X_obs, axis=0)
     sigma = np.std(X_obs, axis=0, ddof=1)
-    # compute squared Z scores for each interventional samples
-    zs = np.array([(abs((X_int[i] - mu[i]) / sigma[i])) ** 2 for i in range(nvars)])
+    # compute squared Z scores for each patient in interventional data
+    zs = np.array([(abs((X_int[i] - mu[i]) / sigma[i])) ** 2 for i in range(ngenes)])
     return zs
 
 
@@ -93,7 +93,8 @@ def root_cause_discovery(X_obs, X_int, perm):
     # ensure positive-definite
     min_eigenvalue = min(LA.eigvals(sigma))
     if min_eigenvalue < 1e-6:
-        sigma = sigma + abs(min_eigenvalue) + 1e-6
+        #sigma = sigma + abs(min_eigenvalue) + 1e-6
+        sigma = sigma + (abs(min_eigenvalue) + 1e-6)*np.eye(p)
     # compute cholesky
     L = LA.cholesky(sigma)
     # solve for Xtilde in L*Xtilde = X_int_perm - mu
@@ -247,7 +248,7 @@ def root_cause_discovery_highdim_parallel(
 
     return root_cause_score, select_len
 
-# LiNGAM-based method 1 (aberrant set + cestimated ausal ordering): for comparison in simulations
+# LiNGAM-based method 1 (aberrant set + causal ordering): for comparison in simulations
 def get_rank_LiNGAM(X_obs, X_int, RC):
     Zscores = zscore(X_obs, X_int)
 
@@ -285,10 +286,10 @@ def get_rank_LiNGAM_one_thre(Zscores, thre_abe, causal_order_lingam):
     Lin_rank = abe_rank + rank_remain_set
     return np.array(Lin_rank, dtype=int)
 
-# LiNGAM-Inva: for comparison in simulations
-def get_InvaScore(X_obs, X_int, B_oracle=True, B=None):
+# LiNGAM-based method 2 (invariant conditional on Pa): for comparison in simulations
+def get_InvaScore(X_obs, X_int, Oracle=False, B=None, sigma_error=None):
     p = X_obs.shape[1]
-    if B_oracle == True:
+    if Oracle == True:
         B_est = B
     else:
         # Fit LiNGAM
@@ -304,7 +305,10 @@ def get_InvaScore(X_obs, X_int, B_oracle=True, B=None):
         Pa_est = list(np.where(B_est[j, :] != 0)[0])
 
         if len(Pa_est) == 0:
-            InvaScore[j] = (y_true - np.mean(y_train) / np.std(y_train)) ** 2
+            if Oracle == True:
+                InvaScore[j] = np.abs(y_true - np.mean(y_train)) / sigma_error[j]
+            else:
+                InvaScore[j] = np.abs(y_true - np.mean(y_train)) / np.std(y_train)
         else:
             X_train = X_obs[:, Pa_est]
             X_test = X_int[Pa_est].reshape(1, -1)
@@ -313,5 +317,10 @@ def get_InvaScore(X_obs, X_int, B_oracle=True, B=None):
                 lasso_cv = LassoCV(cv=10)
                 lasso_cv.fit(X_train, y_train)
             y_test = lasso_cv.predict(X_test)
-            InvaScore[j] = (y_true - y_test[0]) ** 2
+
+            if Oracle == True:
+                InvaScore[j] = np.abs(y_true - y_test[0]) / sigma_error[j]
+            else:
+                std_est_Pa = np.std(y_train - lasso_cv.predict(X_train))
+                InvaScore[j] = np.abs(y_true - y_test[0]) / std_est_Pa
     return InvaScore

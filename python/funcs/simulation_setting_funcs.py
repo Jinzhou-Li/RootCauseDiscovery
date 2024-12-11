@@ -1,6 +1,9 @@
 import numpy as np
 from scipy import linalg
 
+np.set_printoptions(linewidth=200, threshold=np.inf)
+
+
 # functions for simulations
 ################### Randomly generate lower triangular matrix B
 def B_random(p, s_B, B_value_min, B_value_max):
@@ -94,7 +97,6 @@ def rescale_B_func(B, var_X_design, sigma2_error, tol, step_size, max_count):
 
     return B, sigma2_error_copy
 
-
 # Generate a random or hub DAG for simulation, with permuted variable ordering
 def generate_setting(dag_type, s_B, B_value_min, B_value_max, err_min, err_max, var_X_min, var_X_max,
                      p=0, num_hub=0, size_up_block=0, size_low_block=0, intersect_prop=0,
@@ -130,9 +132,8 @@ def generate_setting(dag_type, s_B, B_value_min, B_value_max, err_min, err_max, 
     b = np.random.uniform(-5, 5, p)  # intercept
     return B, sigma2_error, b
 
-
-# Generate n observartional and m interventional data
-def generate_data(n, m, p, B, sigma2_error, b, delta_r):
+# Generate n observartional and m interventional data, with different error types.
+def generate_data_errorType(n, m, p, B, b, delta_r, error_type, sigma2_error):
     # True root causes
     RC = np.random.choice(np.arange(p), size=m, replace=True)
     I = np.identity(p)
@@ -140,17 +141,25 @@ def generate_data(n, m, p, B, sigma2_error, b, delta_r):
     X_obs = np.zeros((n, p))
     X_int = np.zeros((m, p))
     for i in range(n):
-        error = np.random.multivariate_normal(np.repeat(0, p), sigma2_error, 1)
+        if error_type == "Gaussian":
+            error = np.random.multivariate_normal(np.repeat(0, p), sigma2_error, 1)
+        elif error_type == "Uniform":
+            unif_a_vec = np.sqrt(3 * np.diag(sigma2_error))
+            error = np.array([np.random.uniform(-a,a,1)[0] for a in unif_a_vec])
         X_obs[i, :] = linalg.solve(I - B, (b + error).T).reshape(p)
     for i in range(m):
         delta = np.repeat(0, p)
         delta[RC[i]] = delta_r
-        error = np.random.multivariate_normal(np.repeat(0, p), sigma2_error, 1)
+        if error_type == "Gaussian":
+            error = np.random.multivariate_normal(np.repeat(0, p), sigma2_error, 1)
+        elif error_type == "Uniform":
+            unif_a_vec = np.sqrt(3 * np.diag(sigma2_error))
+            error = np.array([np.random.uniform(-a, a, 1)[0] for a in unif_a_vec])
         X_int[i, :] = linalg.solve(I - B, (b + error + delta).T).reshape(p)
 
     return X_obs, X_int, RC
 
-
+# Latent setting: only the Gaussian case.
 def generate_data_latent(n, m, p, latent_proportion, B, sigma2_error, b, delta_r):
     # randomly sample some variables as latent
     latent_idx = np.random.choice(np.arange(p), size=int(latent_proportion * p), replace=False)
@@ -181,28 +190,3 @@ def generate_data_latent(n, m, p, latent_proportion, B, sigma2_error, b, delta_r
         RC_new[i] = RC[i] - np.sum(latent_idx < RC[i])
 
     return X_obs_new, X_int_new, RC_new
-
-# Generate n observartional and m interventional data, with different error types
-def generate_data_errorType(n, m, p, B, b, delta_r, error_type, sigma2_error=None):
-    # True root causes
-    RC = np.random.choice(np.arange(p), size=m, replace=True)
-    I = np.identity(p)
-
-    X_obs = np.zeros((n, p))
-    X_int = np.zeros((m, p))
-    for i in range(n):
-        if error_type == "Gaussian":
-            error = np.random.multivariate_normal(np.repeat(0, p), sigma2_error, 1)
-        elif error_type == "Uniform":
-            error = np.random.uniform(-5, 5, p)
-        X_obs[i, :] = linalg.solve(I - B, (b + error).T).reshape(p)
-    for i in range(m):
-        delta = np.repeat(0, p)
-        delta[RC[i]] = delta_r
-        if error_type == "Gaussian":
-            error = np.random.multivariate_normal(np.repeat(0, p), sigma2_error, 1)
-        elif error_type == "Uniform":
-            error = np.random.uniform(-5, 5, p)
-        X_int[i, :] = linalg.solve(I - B, (b + error + delta).T).reshape(p)
-
-    return X_obs, X_int, RC
