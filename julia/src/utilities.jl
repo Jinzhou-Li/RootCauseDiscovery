@@ -166,7 +166,8 @@ function find_second_largest(X̃all::Vector{Vector{Float64}})
 end
 
 """
-    reduce_genes(y_idx, Xobs, Xint, method, verbose)
+    reduce_genes(y_idx, Xobs, Xint, [method], [verbose], 
+        [nhalf_threshold], [normalize])
 
 Treat each gene as the response and run CVLasso to select a subset of genes 
 (estimated Markov blanket). Return new datasets with only these genes. The
@@ -180,7 +181,8 @@ function reduce_genes(
         Xint_sample::AbstractVector{Float64},
         method::String = "cv", # either "cv" or "nhalf"
         verbose::Bool = true,
-        nhalf_threshold = 5 # when CVLasso selects too few, run method=nhalf
+        nhalf_threshold = 5, # when CVLasso selects too few, run method=nhalf
+        normalize::Bool = false
     )
     n, p = size(Xobs)
 
@@ -188,13 +190,18 @@ function reduce_genes(
     y = Xobs[:, y_idx]
     X = Xobs[:, setdiff(1:p, y_idx)]
 
+    # normalize the columns of X if requested
+    if normalize
+        StatsBase.zscore!(X, mean(X, dims=1), std(X, dims=1))
+    end
+
     # fit lasso
     beta_final = nothing
     if method == "cv"
         cv = glmnetcv(X, y)
         beta_final = GLMNet.coef(cv)
         if count(!iszero, beta_final) < nhalf_threshold
-            return reduce_genes(y_idx, Xobs, Xint_sample, "nhalf", verbose)
+            return reduce_genes(y_idx, Xobs, Xint_sample, "nhalf", verbose, normalize)
         end
     elseif method == "nhalf" # ad-hoc method to choose ~n/2 number of non-zero betas
         # compute default lambda path
@@ -324,7 +331,9 @@ function root_cause_discovery_reduced_dimensional(
 end
 
 """
-    root_cause_discovery_high_dimensional
+    root_cause_discovery_high_dimensional(Xobs, Xint_sample; [method]
+        [y_idx_z_threshold], [nshuffles], [verbose], [thresholds],
+        [y_indices], [normalize_before_lasso])
 
 The main root cause discovery for high-dimensional data.
 This includes treating each variable as response, 
@@ -339,7 +348,8 @@ function root_cause_discovery_high_dimensional(
         nshuffles::Int = 1,
         verbose = true,
         thresholds::Union{Nothing, Vector{Float64}} = nothing,
-        y_indices = compute_y_idx(Xobs, Xint_sample, y_idx_z_threshold)
+        y_indices = compute_y_idx(Xobs, Xint_sample, y_idx_z_threshold),
+        normalize_before_lasso::Bool = false
     )
     p = size(Xobs, 2)
     verbose && println("Trying $(length(y_indices)) y_idx")
@@ -350,7 +360,7 @@ function root_cause_discovery_high_dimensional(
         # run lasso, select gene subset to run root cause discovery
         # note: it is possible that reduce_genes (i.e. CVLasso) select no features
         Xobs_new, Xint_sample_new, _ = reduce_genes(
-            y_idx, Xobs, Xint_sample, method, verbose
+            y_idx, Xobs, Xint_sample, method, verbose, normalize_before_lasso
         )
         # run our root cause discovery algorithm on reduced data
         root_cause_scores[y_idx] = root_cause_discovery_reduced_dimensional(
