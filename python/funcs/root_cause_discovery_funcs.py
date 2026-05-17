@@ -131,10 +131,13 @@ def root_cause_discovery_main(X_obs, X_int, nshuffles=1, thresholds=None, verbos
 
     # assign final root cause score for variables that never had maximal Xtilde_i
     idx2 = np.where(root_cause_score == 0)[0]
+    idx1 = np.where(root_cause_score != 0)[0]
     if len(idx2) != 0:
-        idx1 = np.where(root_cause_score != 0)[0]
-        max_RC_score_idx2 = np.min(root_cause_score[idx1])/2
-        root_cause_score[idx2] = z[idx2] / (np.max(z[idx2]) / max_RC_score_idx2)
+        if len(idx1) != 0:
+            max_RC_score_idx2 = np.min(root_cause_score[idx1])/2
+            root_cause_score[idx2] = z[idx2] / (np.max(z[idx2]) / max_RC_score_idx2)
+        else:
+            root_cause_score = z
     return root_cause_score
 
 
